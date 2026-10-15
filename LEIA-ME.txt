@@ -1,0 +1,25 @@
+# MediControl PWA com login Google
+
+## Conteúdo
+- `index.html`: aplicativo principal (mantém login tradicional por e-mail/senha e adiciona Google OAuth).
+- `Controle_de_Medicamentos_PWA_OAuth_Google.html`: cópia com nome descritivo.
+- `manifest.webmanifest`, `sw.js` e `icons/`: instalação PWA e cache básico.
+- `Supabase_Controle_Medicamentos_setup.sql`: SQL necessário para a tabela/RLS.
+
+## Publicação recomendada (GitHub Pages)
+1. Crie um repositório para o MediControl e envie **todos os arquivos e a pasta `icons`** para a raiz da branch `main`.
+2. Ative Settings → Pages → Deploy from a branch → `main` / `/ (root)`.
+3. Abra a URL HTTPS publicada, entre em **Nuvem & Config**, informe o Project URL e a chave pública (`publishable`/`anon`) do projeto Supabase e clique em **Salvar configuração**.
+4. Para Google OAuth, no Supabase acesse Authentication → Sign In / Providers → Google e habilite o provedor usando o Client ID e Client Secret do Google Cloud. O Client Secret fica **somente no Supabase**, nunca neste HTML.
+5. No Google Cloud, cadastre como origem autorizada o domínio do GitHub Pages (ex.: `https://SEU-USUARIO.github.io`) e como URI de redirecionamento autorizado o callback exibido pelo Supabase (formato `https://SEU-PROJETO.supabase.co/auth/v1/callback`).
+6. No Supabase → Authentication → URL Configuration, defina a Site URL para a URL publicada do app e inclua a URL publicada exata em Redirect URLs (por exemplo `https://SEU-USUARIO.github.io/SEU-REPOSITORIO/`).
+7. No app, clique em **Entrar com Google**. O login por e-mail/senha continua disponível.
+8. No Android/Chrome, abra a URL publicada e use o menu ⋮ → **Instalar app** ou **Adicionar à tela inicial**.
+
+## Importante sobre lembretes
+O PWA inclui lembretes locais por Notification API, mas o navegador pode suspender a página quando o app está fechado. Este pacote **não implementa push remoto**; portanto não garante avisos com o app fechado. Para isso seria necessário configurar um serviço push/servidor e o envio de notificações agendadas.
+
+## Segurança e dados
+- Use somente a chave pública `publishable`/`anon` no app. Nunca coloque `service_role` ou o Client Secret do Google no HTML.
+- A tabela `medication_data` e as políticas RLS devem estar configuradas pelo SQL fornecido.
+- A URL e a chave pública do Supabase são configuradas dentro do app e persistidas no navegador.

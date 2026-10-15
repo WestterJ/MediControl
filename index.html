@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f766e">
+<meta name="description" content="MediControl: controle de medicamentos, rotinas e lembretes.">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<title>Controle de Medicamentos & Rotinas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; background: #f0fdfa; color: #0f172a; }
+  
+  .glass-card {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+  /* Custom checkbox styling */
+  .med-checkbox {
+    appearance: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid #cbd5e1;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s;
+  }
+  .med-checkbox:checked {
+    background-color: #10b981;
+    border-color: #10b981;
+  }
+  .med-checkbox:checked::after {
+    content: '✔';
+    color: white;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1rem;
+  }
+</style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+<header class="bg-teal-700 text-white shadow-md sticky top-0 z-30 border-b-4 border-teal-500">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center space-x-3">
+      <div class="bg-white text-teal-700 p-2 rounded-xl font-bold text-xl shadow-inner">💊</div>
+      <div>
+        <h1 class="text-lg md:text-xl font-bold tracking-tight">MediControl</h1>
+        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas</small>
+      </div>
+    </div>
+    
+    <div class="flex items-center flex-wrap gap-2 relative">
+      <button id="btn-cloud-status" class="text-xs px-3 py-1.5 rounded-full bg-amber-600 text-white border border-amber-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-amber-500" title="Clique para sincronizar agora com a nuvem">
+        <span id="cloud-status-icon">💾</span> <span id="cloud-status-text">Armazenamento Local</span>
+      </button>
+
+      <button id="btn-tab-inicio" class="bg-teal-900 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">🏠 Início</button>
+      <button id="btn-tab-meds" class="bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">💊 Medicamentos</button>
+      <button id="btn-tab-rotinas" class="bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">⏰ Rotinas</button>
+      <button id="btn-tab-config" class="bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">☁️ Nuvem & Config</button>
+      
+      <details class="relative" id="menu-nuvem">
+        <summary class="list-none bg-teal-800 hover:bg-teal-600 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg cursor-pointer transition flex items-center gap-1 shadow-sm">Menu ▾</summary>
+        <div class="absolute right-0 mt-2 w-[90vw] md:w-80 max-w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl z-[100] p-2.5 flex flex-col gap-1.5 text-slate-700 text-sm">
+          <div class="text-xs font-bold text-slate-400 uppercase px-2 py-0.5">Sincronização /apps/dados/</div>
+          
+          <button id="btn-menu-sync-supabase" class="text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800 rounded-lg transition font-semibold flex items-center gap-2 border border-emerald-200">☁️ Sincronizar Supabase</button>
+          <hr class="my-1 border-slate-100">
+          <button id="btn-exportar-json" class="text-left px-3 py-2 hover:bg-slate-100 rounded-lg transition font-semibold text-emerald-800">⬇️ Exportar Backup Local (JSON)</button>
+          <button id="btn-importar-json" class="text-left px-3 py-2 hover:bg-slate-100 rounded-lg transition font-semibold text-sky-800">⬆️ Importar Backup (JSON)</button>
+          <button id="btn-resetar" class="text-left px-3 py-2 hover:bg-red-50 text-red-600 rounded-lg transition font-medium mt-1">⚠️ Apagar Todos os Dados</button>
+        </div>
+      </details>
+      <input type="file" id="file-input-json" accept=".json" class="hidden">
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6 relative">
+  
+  <!-- MODULO: INÍCIO (DASHBOARD) -->
+  <div id="view-inicio" class="space-y-6">
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- HOJE -->
+      <section class="glass-card rounded-2xl p-5 shadow-sm space-y-4 border-t-4 border-t-emerald-500">
+        <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+          📅 Hoje <span id="data-hoje" class="text-sm font-normal text-slate-500 ml-auto"></span>
+        </h2>
+        <div id="lista-hoje" class="space-y-3">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+      <!-- AMANHÃ -->
+      <section class="glass-card rounded-2xl p-5 shadow-sm space-y-4 border-t-4 border-t-sky-500">
+        <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+          ⏭️ Amanhã <span id="data-amanha" class="text-sm font-normal text-slate-500 ml-auto"></span>
+        </h2>
+        <div id="lista-amanha" class="space-y-3 opacity-90">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+    </div>
+
+    <!-- SEMANA -->
+    <section class="glass-card rounded-2xl p-5 shadow-sm space-y-4 border-t-4 border-t-indigo-500">
+      <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+        🗓️ Visão dos Próximos 7 Dias
+      </h2>
+      <div class="overflow-x-auto pb-4">
+        <div id="grid-semana" class="flex gap-4 min-w-max">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- MODULO: MEDICAMENTOS -->
+  <div id="view-meds" class="hidden space-y-6">
+    <div class="glass-card rounded-2xl p-5 shadow-sm flex flex-wrap justify-between items-center gap-4">
+      <div>
+        <h2 class="text-lg font-bold text-slate-800">Meus Medicamentos</h2>
+        <p class="text-xs text-slate-500">Cadastre todos os remédios que você utiliza.</p>
+      </div>
+      <button id="btn-novo-med" class="bg-teal-700 hover:bg-teal-800 text-white text-xs md:text-sm font-semibold px-4 py-2 rounded-lg transition shadow">➕ Novo Medicamento</button>
+    </div>
+    
+    <div class="glass-card rounded-2xl shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm min-w-[600px]">
+          <thead class="bg-slate-100 text-slate-700 uppercase text-xs">
+            <tr>
+              <th class="p-4">Nome do Medicamento</th>
+              <th class="p-4">Dosagem (ex: 50mg, 1 gota)</th>
+              <th class="p-4">Observações</th>
+              <th class="p-4 text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="table-meds-body" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULO: ROTINAS -->
+  <div id="view-rotinas" class="hidden space-y-6">
+    <div class="glass-card rounded-2xl p-5 shadow-sm flex flex-wrap justify-between items-center gap-4">
+      <div>
+        <h2 class="text-lg font-bold text-slate-800">Minhas Rotinas de Uso</h2>
+        <p class="text-xs text-slate-500">Vincule os medicamentos a horários e frequências (ex: todos os dias, dia sim dia não).</p>
+      </div>
+      <button id="btn-nova-rotina" class="bg-teal-700 hover:bg-teal-800 text-white text-xs md:text-sm font-semibold px-4 py-2 rounded-lg transition shadow">⏰ Nova Rotina</button>
+    </div>
+    
+    <div class="glass-card rounded-2xl shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm min-w-[800px]">
+          <thead class="bg-slate-100 text-slate-700 uppercase text-xs">
+            <tr>
+              <th class="p-4">Medicamento</th>
+              <th class="p-4 text-center">Horário</th>
+              <th class="p-4">Frequência</th>
+              <th class="p-4 text-center">Data Início</th>
+              <th class="p-4 text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="table-rotinas-body" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULO: CONFIGURAÇÕES & NUVEM -->
+  <div id="view-config" class="hidden space-y-6 max-w-3xl mx-auto">
+    <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+      <h2 class="text-lg font-bold text-slate-800 mb-1">☁️ Sincronização automática (Supabase)</h2>
+      <p class="text-sm text-slate-500 mb-4">Configure o projeto, crie sua conta e entre com o mesmo e-mail no computador e no celular. Os dados são separados por usuário.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div><label class="block text-sm font-semibold text-slate-600 mb-1">Project URL</label><input type="url" id="config-supabase-url" placeholder="https://seuprojeto.supabase.co" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+        <div><label class="block text-sm font-semibold text-slate-600 mb-1">Publishable / anon key</label><input type="password" id="config-supabase-key" placeholder="sb_publishable_... ou anon key" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+        <div><label class="block text-sm font-semibold text-slate-600 mb-1">E-mail</label><input type="email" id="config-supabase-email" placeholder="voce@exemplo.com" autocomplete="email" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+        <div><label class="block text-sm font-semibold text-slate-600 mb-1">Senha</label><input type="password" id="config-supabase-password" placeholder="Sua senha" autocomplete="current-password" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+      </div>
+      <p id="supabase-help" class="text-xs text-slate-500 mt-3">Execute o SQL de configuração no SQL Editor do Supabase. Use somente a chave pública (publishable/anon), nunca service_role. Para Google, habilite o provedor Google em Supabase → Authentication → Sign In / Providers.</p>
+      <div class="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button type="button" id="btn-supabase-save-config" class="px-3 py-2.5 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold">Salvar configuração</button>
+        <button type="button" id="btn-supabase-signup" class="px-3 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-semibold">Criar conta</button>
+        <button type="button" id="btn-supabase-login" class="px-3 py-2.5 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-sm font-semibold">Entrar e sincronizar</button>
+        <button type="button" id="btn-supabase-google" class="px-3 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-sm font-semibold sm:col-span-2">🌐 Entrar com Google</button>
+        <button type="button" id="btn-supabase-sync" class="px-3 py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl text-sm font-semibold">Sincronizar agora</button>
+        <button type="button" id="btn-supabase-logout" class="px-3 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold sm:col-span-2">Sair da conta</button>
+      </div>
+    </div>
+    <div class="bg-white border border-amber-200 rounded-2xl p-6 shadow-sm space-y-3">
+      <h2 class="text-lg font-bold text-slate-800">🔔 Lembretes de medicamentos no celular</h2>
+      <p class="text-sm text-slate-600">Ative as notificações para receber um aviso perto do horário cadastrado nas rotinas. A permissão é concedida pelo navegador e precisa ser ativada neste dispositivo.</p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="btn-enable-notifications" class="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold">🔔 Ativar notificações</button>
+        <button type="button" id="btn-test-notification" class="px-4 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold">Enviar notificação de teste</button>
+      </div>
+      <p id="notification-status" class="text-sm font-medium text-slate-700">Verificando suporte do navegador...</p>
+      <p class="text-xs text-slate-500">Importante: para alertar no horário, mantenha o MediControl aberto ou minimizado. Se o navegador/app for fechado, o celular reiniciado ou o sistema suspender a página, o aviso pode não ser entregue. Notificação garantida com o app fechado exige uma versão PWA com serviço de notificações push.</p>
+    </div>
+    <div class="bg-teal-50 border border-teal-200 rounded-2xl p-5 text-sm text-teal-900">
+      <strong>Backup e segurança</strong><p class="mt-1">O backup JSON continua disponível no menu. A sincronização usa autenticação e políticas RLS para que cada conta acesse somente seus próprios dados.</p>
+    </div>
+  </div>
+</main>
+
+<!-- Modal Genérico de Confirmação -->
+<dialog id="modal-confirm" class="rounded-2xl p-0 w-full max-w-sm shadow-2xl backdrop:bg-slate-900/50">
+  <div class="p-6 text-center space-y-4">
+    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-amber-100 text-amber-600 mb-4">
+      <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+      </svg>
+    </div>
+    <h3 id="modal-confirm-title" class="font-bold text-lg text-slate-800">Atenção</h3>
+    <p id="modal-confirm-msg" class="text-sm text-slate-600">Deseja realmente continuar com esta ação?</p>
+    <div class="flex justify-center gap-3 pt-4">
+      <button id="modal-confirm-cancel" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition">Cancelar</button>
+      <button id="modal-confirm-ok" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold shadow transition">Confirmar</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Modal Conflito Nuvem -->
+<dialog id="modal-sync-conflict" class="rounded-2xl p-0 w-full max-w-xl shadow-2xl backdrop:bg-slate-900/60">
+  <div class="bg-blue-700 text-white px-6 py-4 border-b-4 border-blue-400">
+    <h3 class="font-bold text-lg flex items-center gap-2">☁️ Conflito de Sincronização</h3>
+  </div>
+  <div class="p-6 space-y-4">
+    <p class="text-sm text-slate-600">Detectamos que já existe um arquivo salvo na pasta <strong>/apps/dados/</strong> da sua nuvem, mas você também possui dados neste dispositivo.</p>
+    
+    <div id="sync-recommendation-box" class="bg-blue-50 text-blue-800 p-4 rounded-xl border border-blue-200 text-sm leading-relaxed">
+      Analisando dados...
+    </div>
+
+    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-sm">
+      <strong class="text-slate-700">Escolha a ação desejada:</strong>
+      <ul class="list-none mt-3 space-y-2">
+        <li class="flex items-start gap-2">
+          <span class="mt-0.5 text-blue-600">📥</span> 
+          <span><strong>Baixar da Nuvem:</strong> Substitui os dados locais atuais.</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="mt-0.5 text-emerald-600">📤</span>
+          <span><strong>Enviar Dados Atuais:</strong> Sobrescreve o arquivo na nuvem.</span>
+        </li>
+      </ul>
+    </div>
+    
+    <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-slate-100">
+      <button onclick="window.resolveSyncConflict('upload')" class="px-4 py-2 border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 rounded-lg text-sm font-bold transition text-center shadow-sm">📤 Enviar Dados Atuais</button>
+      <button onclick="window.resolveSyncConflict('download')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow transition text-center">📥 Baixar da Nuvem</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Modal Medicamento -->
+<dialog id="modal-med" class="rounded-2xl p-0 w-full max-w-md shadow-2xl backdrop:bg-slate-900/50">
+  <div class="bg-teal-700 text-white px-6 py-4 flex justify-between items-center">
+    <h3 id="modal-med-title" class="font-bold text-lg">Novo Medicamento</h3>
+    <button id="modal-med-close" class="text-white hover:text-teal-200 font-bold text-xl">&times;</button>
+  </div>
+  <form id="form-med" class="p-6 space-y-4">
+    <input type="hidden" id="med-id">
+    <div>
+      <label class="block text-sm font-semibold text-slate-700 mb-1">Nome do Medicamento</label>
+      <input type="text" id="med-nome" required placeholder="Ex: Losartana" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+    </div>
+    <div>
+      <label class="block text-sm font-semibold text-slate-700 mb-1">Dosagem</label>
+      <input type="text" id="med-dosagem" required placeholder="Ex: 50mg, 2 gotas, 1 comprimido" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+    </div>
+    <div>
+      <label class="block text-sm font-semibold text-slate-700 mb-1">Observações (Opcional)</label>
+      <textarea id="med-obs" rows="2" placeholder="Ex: Tomar após o café da manhã" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"></textarea>
+    </div>
+    <div class="flex justify-end gap-3 pt-3 border-t">
+      <button type="button" id="modal-med-cancel" class="px-4 py-2 border text-slate-700 rounded-lg text-sm font-medium">Cancelar</button>
+      <button type="submit" class="px-4 py-2 bg-teal-600 text-white font-bold rounded-lg text-sm shadow hover:bg-teal-700">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Modal Rotina -->
+<dialog id="modal-rotina" class="rounded-2xl p-0 w-full max-w-md shadow-2xl backdrop:bg-slate-900/50">
+  <div class="bg-indigo-700 text-white px-6 py-4 flex justify-between items-center">
+    <h3 id="modal-rotina-title" class="font-bold text-lg">Nova Rotina</h3>
+    <button id="modal-rotina-close" class="text-white hover:text-indigo-200 font-bold text-xl">&times;</button>
+  </div>
+  <form id="form-rotina" class="p-6 space-y-4">
+    <input type="hidden" id="rotina-id">
+    <div>
+      <label class="block text-sm font-semibold text-slate-700 mb-1">Medicamento</label>
+      <select id="rotina-medId" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+        <!-- Preenchido via JS -->
+      </select>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-semibold text-slate-700 mb-1">Horário</label>
+        <input type="time" id="rotina-horario" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-slate-700 mb-1">Data Início</label>
+        <input type="date" id="rotina-dataInicio" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+      </div>
+    </div>
+    <div>
+      <label class="block text-sm font-semibold text-slate-700 mb-1">Frequência</label>
+      <select id="rotina-frequencia" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+        <option value="diario">Todos os dias</option>
+        <option value="dsdn">Dia sim, dia não (A cada 2 dias)</option>
+        <option value="1s2n">1 dia sim, 2 dias não (A cada 3 dias)</option>
+        <option value="semanal">Uma vez por semana</option>
+      </select>
+    </div>
+    <div id="rotina-diaSemana-box" class="hidden">
+      <label class="block text-sm font-semibold text-slate-700 mb-1">Dia da Semana</label>
+      <select id="rotina-diaSemana" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+        <option value="0">Domingo</option>
+        <option value="1">Segunda-feira</option>
+        <option value="2">Terça-feira</option>
+        <option value="3">Quarta-feira</option>
+        <option value="4">Quinta-feira</option>
+        <option value="5">Sexta-feira</option>
+        <option value="6">Sábado</option>
+      </select>
+    </div>
+    
+    <div class="flex justify-end gap-3 pt-3 border-t">
+      <button type="button" id="modal-rotina-cancel" class="px-4 py-2 border text-slate-700 rounded-lg text-sm font-medium">Cancelar</button>
+      <button type="submit" class="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg text-sm shadow hover:bg-indigo-700">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl opacity-0 pointer-events-none transition duration-300 z-50 text-sm"></div>
+
+<script>
+(function() {
+  "use strict";
+
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c] || c));
+  
+  // Utilidades de Data
+  const getHojeStr = () => new Date().toISOString().split('T')[0];
+  const formatDataBR = dataStr => {
+    if (!dataStr) return '';
+    const [y, m, d] = dataStr.split('-');
+    return `${d}/${m}/${y}`;
+  };
+  const diffDias = (data1Str, data2Str) => {
+    const d1 = new Date(data1Str + "T00:00:00");
+    const d2 = new Date(data2Str + "T00:00:00");
+    return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+  };
+  const diaDaSemana = (dataStr) => new Date(dataStr + "T00:00:00").getDay();
+  const formatarHora = hora => hora.substring(0, 5);
+
+  // Sistema de Mensagens
+  function showToast(msg, isSync = false) {
+    const t = $('#toast');
+    t.innerHTML = isSync ? `🔄 <strong>Sincronizando:</strong> ${msg}` : msg;
+    t.className = isSync 
+      ? "fixed bottom-6 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-5 py-3 rounded-xl shadow-2xl opacity-100 transition duration-300 z-50 text-sm border border-blue-400"
+      : "fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl opacity-100 transition duration-300 z-50 text-sm";
+    
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => {
+      t.classList.remove('opacity-100');
+      t.classList.add('opacity-0');
+    }, 3500);
+  }
+
+  // Modal de Confirmação
+  let pendingConfirmAction = null;
+  window.customConfirm = function(title, msg, onConfirm, btnText = 'Confirmar') {
+    $('#modal-confirm-title').textContent = title;
+    $('#modal-confirm-msg').textContent = msg;
+    $('#modal-confirm-ok').textContent = btnText;
+    pendingConfirmAction = onConfirm;
+    $('#modal-confirm').showModal();
+  };
+  $('#modal-confirm-cancel').onclick = () => $('#modal-confirm').close();
+  $('#modal-confirm-ok').onclick = () => {
+    if (pendingConfirmAction) pendingConfirmAction();
+    $('#modal-confirm').close();
+  };
+
+  // ESTADO DA APLICAÇÃO
+  let state = {
+    medicamentos: [], // {id, nome, dosagem, obs}
+    rotinas: [],      // {id, medId, horario, frequencia, dataInicio, diaSemana}
+    historico: []     // {id, rotinaId, data, horaTomado}
+  };
+
+  const STORAGE_KEY = 'med_control_cloud_api_v1';
+  let cloudProvider = localStorage.getItem('med_cloud_provider') || 'local';
+  let cloudToken = localStorage.getItem('med_cloud_token') || '';
+  let tempCloudDataToDownload = null;
+
+  function updateCloudStatusPill() {
+    const pill = $('#btn-cloud-status');
+    const icon = $('#cloud-status-icon');
+    const text = $('#cloud-status-text');
+    
+    if (cloudProvider === 'supabase') {
+      pill.className = "text-xs px-3 py-1.5 rounded-full bg-emerald-700 text-white border border-emerald-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-emerald-600";
+      icon.textContent = "☁️"; text.textContent = "Supabase";
+    } else if (cloudProvider === 'google') {
+      pill.className = "text-xs px-3 py-1.5 rounded-full bg-sky-700 text-white border border-sky-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-sky-600";
+      icon.textContent = "☁️"; text.textContent = "Google Drive";
+    } else if (cloudProvider === 'onedrive') {
+      pill.className = "text-xs px-3 py-1.5 rounded-full bg-blue-700 text-white border border-blue-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-blue-600";
+      icon.textContent = "☁️"; text.textContent = "OneDrive";
+    } else {
+      pill.className = "text-xs px-3 py-1.5 rounded-full bg-amber-600 text-white border border-amber-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-amber-500";
+      icon.textContent = "💾"; text.textContent = "Local";
+    }
+  }
+
+  async function saveCloud(force = false) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      
+      if (cloudProvider === 'supabase' && supabaseClient && supabaseUser) {
+        if (supabaseSaveInFlight) return;
+        supabaseSaveInFlight = true;
+        try {
+          const { error } = await supabaseClient.from('medication_data').upsert({user_id:supabaseUser.id, data:state, updated_at:new Date().toISOString()}, {onConflict:'user_id'});
+          if (error) throw error;
+          showToast('Dados sincronizados com Supabase.');
+        } finally { supabaseSaveInFlight = false; }
+      } else if (cloudProvider !== 'local' && cloudToken) {
+        showToast("Sincronizando com /apps/dados/...", true);
+        const fileName = "controle_medicamentos_dados.json";
+        // Limpar histórico antigo (opcional, mantendo leve) - manter últimos 60 dias
+        const hojeObj = new Date();
+        hojeObj.setDate(hojeObj.getDate() - 60);
+        const cutoff = hojeObj.toISOString().split('T')[0];
+        const stateToSave = {
+          ...state,
+          historico: state.historico.filter(h => h.data >= cutoff)
+        };
+
+        const fileContent = JSON.stringify(stateToSave, null, 2);
+
+        if (cloudProvider === 'google') {
+          const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and trashed=false`, {
+            headers: { 'Authorization': `Bearer ${cloudToken}` }
+          });
+          const searchJson = await searchRes.json();
+          let fileId = searchJson.files?.[0]?.id;
+
+          if (fileId) {
+            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${cloudToken}`, 'Content-Type': 'application/json' },
+              body: fileContent
+            });
+          } else {
+            const metadata = { name: fileName, mimeType: 'application/json' };
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+            form.append('file', new Blob([fileContent], { type: 'application/json' }));
+            
+            await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${cloudToken}` },
+              body: form
+            });
+          }
+        } else if (cloudProvider === 'onedrive') {
+          await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/apps/dados/${fileName}:/content`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${cloudToken}`, 'Content-Type': 'application/json' },
+            body: fileContent
+          });
+        }
+        showToast("Sincronizado na Nuvem!");
+      }
+    } catch(e) {
+      console.error("Erro na nuvem:", e);
+      showToast("Erro ao sincronizar (Token expirado ou inválido).");
+    }
+  }
+
+  $('#btn-cloud-status').onclick = () => {
+    if (cloudProvider === 'local') {
+      $('#btn-tab-config').click();
+      $('#btn-tab-config').click();
+      showToast("Configure e entre no Supabase para sincronizar.");
+    } else saveCloud(true);
+  };
+
+  async function fetchCloudData() {
+    if (!cloudToken) return null;
+    try {
+      if (cloudProvider === 'google') {
+        const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='controle_medicamentos_dados.json' and trashed=false`, {
+          headers: { 'Authorization': `Bearer ${cloudToken}` }
+        });
+        const searchJson = await searchRes.json();
+        const fileId = searchJson.files?.[0]?.id;
+        if (fileId) {
+          const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${cloudToken}` }
+          });
+          if (fileRes.ok) return await fileRes.json();
+        }
+      } else if (cloudProvider === 'onedrive') {
+        const fileRes = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/apps/dados/controle_medicamentos_dados.json:/content`, {
+          headers: { 'Authorization': `Bearer ${cloudToken}` }
+        });
+        if (fileRes.ok) return await fileRes.json();
+      }
+    } catch(e) { console.error(e); }
+    return null;
+  }
+
+  async function connectCloudWithToken(provider, token) {
+    if (!token) { showToast("Insira o Token OAuth."); return; }
+    cloudProvider = provider;
+    cloudToken = token.trim();
+    localStorage.setItem('med_cloud_provider', cloudProvider);
+    localStorage.setItem('med_cloud_token', cloudToken);
+    updateCloudStatusPill();
+    
+    showToast("Verificando dados na nuvem...", true);
+    const cloudData = await fetchCloudData();
+
+    if (cloudData && (cloudData.medicamentos || cloudData.rotinas)) {
+      tempCloudDataToDownload = cloudData;
+      $('#sync-recommendation-box').innerHTML = `
+        📁 Arquivo <strong>controle_medicamentos_dados.json</strong> encontrado em <strong>/apps/dados/</strong>.<br>
+        O arquivo da nuvem possui ${cloudData.medicamentos?.length||0} medicamentos e ${cloudData.rotinas?.length||0} rotinas.
+      `;
+      $('#modal-sync-conflict').showModal();
+    } else {
+      showToast("Nenhum dado prévio. Enviando base local...");
+      saveCloud(true);
+    }
+  }
+
+  window.resolveSyncConflict = function(action) {
+    $('#modal-sync-conflict').close();
+    if (action === 'download' && tempCloudDataToDownload) {
+      state = {
+        medicamentos: tempCloudDataToDownload.medicamentos || [],
+        rotinas: tempCloudDataToDownload.rotinas || [],
+        historico: tempCloudDataToDownload.historico || []
+      };
+      saveCloud(); refreshAll();
+      showToast("Dados baixados da nuvem!");
+    } else {
+      saveCloud(true);
+    }
+  };
+
+
+  // --- Supabase: autenticação e sincronização automática ---
+  let supabaseClient = null;
+  let supabaseUser = null;
+  let supabaseConfig = {url: localStorage.getItem('med_supabase_url') || '', key: localStorage.getItem('med_supabase_key') || ''};
+  let supabaseSaveInFlight = false;
+  let supabaseSaveTimer = null;
+
+  function readSupabaseForm() {
+    const url = ($('#config-supabase-url').value || supabaseConfig.url || '').trim().replace(/\/$/, '');
+    const key = ($('#config-supabase-key').value || supabaseConfig.key || '').trim();
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) throw new Error('Informe o Project URL válido do Supabase (https://....supabase.co).');
+    if (!key) throw new Error('Informe a chave pública publishable/anon. Nunca use service_role.');
+    if (!window.supabase || !window.supabase.createClient) throw new Error('Biblioteca Supabase não carregou. Verifique a internet e recarregue a página.');
+    supabaseConfig = {url,key};
+    localStorage.setItem('med_supabase_url',url); localStorage.setItem('med_supabase_key',key);
+    if (!supabaseClient || supabaseClient.supabaseUrl !== url) supabaseClient = window.supabase.createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    return supabaseClient;
+  }
+
+  async function supabaseReadRemote() {
+    if (!supabaseClient || !supabaseUser) throw new Error('Entre na sua conta Supabase primeiro.');
+    const {data,error} = await supabaseClient.from('medication_data').select('data,updated_at').eq('user_id',supabaseUser.id).maybeSingle();
+    if (error) throw error; return data || null;
+  }
+
+  async function syncSupabaseNow(showMessage=true) {
+    if (!supabaseClient || !supabaseUser) { if(showMessage) showToast('Entre no Supabase antes de sincronizar.'); return; }
+    if (supabaseSaveInFlight) return;
+    supabaseSaveInFlight = true;
+    try {
+      if(showMessage) showToast('Sincronizando com Supabase...',true);
+      const {error} = await supabaseClient.from('medication_data').upsert({user_id:supabaseUser.id,data:state,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+      if(error) throw error;
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudProvider='supabase'; localStorage.setItem('med_cloud_provider','supabase'); updateCloudStatusPill();
+      if(showMessage) showToast('Dados sincronizados com a nuvem.');
+    } catch(err) { console.error('Supabase sync error:',err); showToast('Falha na sincronização: '+(err.message || 'verifique URL, chave, tabela e RLS')+'. Os dados permanecem neste aparelho.'); }
+    finally { supabaseSaveInFlight=false; }
+  }
+
+  function scheduleSupabaseSave(force=false) { if(supabaseSaveTimer) clearTimeout(supabaseSaveTimer); supabaseSaveTimer=setTimeout(()=>syncSupabaseNow(!!force),force?0:1200); }
+
+  async function applySupabaseSession(session, initial=false) {
+    supabaseUser = session && session.user ? session.user : null;
+    if(!supabaseUser) { if(cloudProvider==='supabase') cloudProvider='local'; updateCloudStatusPill(); return; }
+    cloudProvider='supabase'; localStorage.setItem('med_cloud_provider','supabase'); updateCloudStatusPill();
+    try {
+      const remote=await supabaseReadRemote();
+      if(remote && remote.data) {
+        if(initial) {
+          tempCloudDataToDownload=remote.data;
+          $('#sync-recommendation-box').innerHTML='Encontramos dados na conta Supabase. <strong>Baixar da Nuvem</strong> substitui os dados deste aparelho; <strong>Enviar Dados Atuais</strong> substitui os dados remotos.';
+          $('#modal-sync-conflict').showModal();
+        } else { state={medicamentos:remote.data.medicamentos||[],rotinas:remote.data.rotinas||[],historico:remote.data.historico||[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); refreshAll(); showToast('Dados carregados do Supabase.'); }
+      } else { await syncSupabaseNow(true); }
+    } catch(err) { showToast('Login realizado, mas não foi possível ler os dados: '+(err.message||'verifique a tabela/RLS')); }
+  }
+
+  $('#btn-supabase-save-config').onclick=()=>{try{readSupabaseForm();showToast('Configuração Supabase salva neste dispositivo.');}catch(err){showToast(err.message);}};
+  $('#btn-supabase-signup').onclick=async()=>{try{const c=readSupabaseForm(),email=$('#config-supabase-email').value.trim(),password=$('#config-supabase-password').value;if(!email||!password)throw new Error('Informe e-mail e senha.');const {data,error}=await c.auth.signUp({email,password});if(error)throw error;if(data.session)await applySupabaseSession(data.session,true);else showToast('Conta criada. Confira seu e-mail para confirmar o cadastro e depois entre.');}catch(err){showToast('Não foi possível criar a conta: '+err.message);}};
+  $('#btn-supabase-login').onclick=async()=>{try{const c=readSupabaseForm(),email=$('#config-supabase-email').value.trim(),password=$('#config-supabase-password').value;if(!email||!password)throw new Error('Informe e-mail e senha.');const {data,error}=await c.auth.signInWithPassword({email,password});if(error)throw error;await applySupabaseSession(data.session,true);}catch(err){showToast('Falha no login: '+err.message);}};
+  $('#btn-supabase-google').onclick=async()=>{try{const c=readSupabaseForm();const redirectTo=window.location.origin+window.location.pathname;const {error}=await c.auth.signInWithOAuth({provider:'google',options:{redirectTo,queryParams:{prompt:'select_account'}}});if(error)throw error;}catch(err){showToast('Falha ao iniciar login Google: '+err.message);}};
+  $('#btn-supabase-sync').onclick=()=>syncSupabaseNow(true);
+  $('#btn-menu-sync-supabase').onclick=()=>{ $('#menu-nuvem').open=false; if(supabaseUser) syncSupabaseNow(true); else $('#btn-tab-config').click(); };
+  $('#btn-supabase-logout').onclick=async()=>{try{if(supabaseClient)await supabaseClient.auth.signOut();supabaseUser=null;cloudProvider='local';localStorage.setItem('med_cloud_provider','local');updateCloudStatusPill();showToast('Você saiu do Supabase. Os dados locais foram mantidos.');}catch(err){showToast('Erro ao sair: '+err.message);}};
+
+  (async function initSupabaseSession(){
+    if(!supabaseConfig.url||!supabaseConfig.key||!window.supabase)return;
+    try{const c=readSupabaseForm();const {data:{session}}=await c.auth.getSession();if(session)await applySupabaseSession(session,true);c.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){supabaseUser=null;cloudProvider='local';updateCloudStatusPill();}else if(event==='SIGNED_IN'&&session&&(!supabaseUser||supabaseUser.id!==session.user.id))setTimeout(()=>applySupabaseSession(session,true),0);});}catch(err){console.warn('Supabase session init:',err.message);}
+  })();
+
+  function loadLocalData() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        state.medicamentos = parsed.medicamentos || [];
+        state.rotinas = parsed.rotinas || [];
+        state.historico = parsed.historico || [];
+      }
+    } catch(e) {}
+    updateCloudStatusPill();
+  }
+
+  $('#btn-exportar-json').onclick = () => {
+    $('#menu-nuvem').open = false;
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); 
+    a.download = `medicamentos_backup_${getHojeStr()}.json`;
+    a.click();
+    showToast("Backup exportado.");
+  };
+
+  $('#btn-importar-json').onclick = () => { $('#menu-nuvem').open = false; $('#file-input-json').click(); };
+  $('#file-input-json').onchange = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const parsed = JSON.parse(evt.target.result);
+        if (parsed.medicamentos || parsed.rotinas) {
+          state.medicamentos = parsed.medicamentos || [];
+          state.rotinas = parsed.rotinas || [];
+          state.historico = parsed.historico || [];
+          saveCloud(); refreshAll(); showToast("Backup importado!");
+        }
+      } catch(err) { showToast("Arquivo inválido."); }
+      e.target.value = '';
+    };
+    reader.readAsText(f);
+  };
+
+  $('#btn-resetar').onclick = () => {
+    $('#menu-nuvem').open = false;
+    customConfirm('Apagar Dados', 'Apagar todos os medicamentos e rotinas? Esta ação não tem volta.', () => {
+      state = { medicamentos: [], rotinas: [], historico: [] };
+      saveCloud(); refreshAll(); showToast("Todos os dados apagados.");
+    });
+  };
+
+  const modalMed = $('#modal-med');
+  $('#btn-novo-med').onclick = () => {
+    $('#modal-med-title').textContent = "Novo Medicamento";
+    $('#med-id').value = ''; $('#med-nome').value = '';
+    $('#med-dosagem').value = ''; $('#med-obs').value = '';
+    modalMed.showModal();
+  };
+  
+  window.editarMed = id => {
+    const m = state.medicamentos.find(x => x.id === id);
+    if(!m) return;
+    $('#modal-med-title').textContent = "Editar Medicamento";
+    $('#med-id').value = m.id; $('#med-nome').value = m.nome;
+    $('#med-dosagem').value = m.dosagem; $('#med-obs').value = m.obs || '';
+    modalMed.showModal();
+  };
+
+  window.excluirMed = id => {
+    // Check se está em rotinas
+    if(state.rotinas.some(r => r.medId === id)) {
+      showToast("Não é possível excluir: Medicamento possui rotinas ativas.");
+      return;
+    }
+    customConfirm("Excluir", "Remover este medicamento?", () => {
+      state.medicamentos = state.medicamentos.filter(x => x.id !== id);
+      saveCloud(); renderMeds();
+    });
+  };
+
+  $('#modal-med-close').onclick = () => modalMed.close();
+  $('#modal-med-cancel').onclick = () => modalMed.close();
+  $('#form-med').onsubmit = e => {
+    e.preventDefault();
+    const id = $('#med-id').value;
+    const payload = {
+      id: id || ('m_' + Date.now()),
+      nome: $('#med-nome').value.trim(),
+      dosagem: $('#med-dosagem').value.trim(),
+      obs: $('#med-obs').value.trim()
+    };
+    if(id) {
+      const idx = state.medicamentos.findIndex(x => x.id === id);
+      if(idx>=0) state.medicamentos[idx] = payload;
+    } else { state.medicamentos.push(payload); }
+    saveCloud(); renderMeds(); modalMed.close(); showToast("Medicamento salvo.");
+  };
+
+  function renderMeds() {
+    const tbody = $('#table-meds-body');
+    if(state.medicamentos.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-slate-500">Nenhum medicamento cadastrado.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = state.medicamentos.sort((a,b)=>a.nome.localeCompare(b.nome)).map(m => `
+      <tr class="hover:bg-slate-50 transition border-b border-slate-100 last:border-0">
+        <td class="p-4 font-bold text-teal-800">${esc(m.nome)}</td>
+        <td class="p-4 text-slate-700">${esc(m.dosagem)}</td>
+        <td class="p-4 text-slate-500 text-xs">${esc(m.obs || '-')}</td>
+        <td class="p-4 text-center whitespace-nowrap">
+          <button class="bg-sky-50 text-sky-600 px-3 py-1 rounded hover:bg-sky-100 mr-2 font-medium" onclick="window.editarMed('${m.id}')">Editar</button>
+          <button class="bg-red-50 text-red-600 px-3 py-1 rounded hover:bg-red-100 font-medium" onclick="window.excluirMed('${m.id}')">Excluir</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  const modalRotina = $('#modal-rotina');
+  
+  function populateMedSelect() {
+    const sel = $('#rotina-medId');
+    sel.innerHTML = state.medicamentos.map(m => `<option value="${m.id}">${esc(m.nome)} (${esc(m.dosagem)})</option>`).join('');
+    if(state.medicamentos.length===0) sel.innerHTML = `<option value="">Cadastre um medicamento primeiro</option>`;
+  }
+
+  $('#rotina-frequencia').onchange = e => {
+    $('#rotina-diaSemana-box').style.display = e.target.value === 'semanal' ? 'block' : 'none';
+  };
+
+  $('#btn-nova-rotina').onclick = () => {
+    if(state.medicamentos.length === 0) { showToast("Cadastre um medicamento antes de criar rotinas!"); return; }
+    $('#modal-rotina-title').textContent = "Nova Rotina";
+    $('#rotina-id').value = ''; 
+    populateMedSelect();
+    $('#rotina-horario').value = '08:00';
+    $('#rotina-dataInicio').value = getHojeStr();
+    $('#rotina-frequencia').value = 'diario';
+    $('#rotina-frequencia').dispatchEvent(new Event('change'));
+    modalRotina.showModal();
+  };
+
+  window.editarRotina = id => {
+    const r = state.rotinas.find(x => x.id === id);
+    if(!r) return;
+    $('#modal-rotina-title').textContent = "Editar Rotina";
+    $('#rotina-id').value = r.id;
+    populateMedSelect();
+    $('#rotina-medId').value = r.medId;
+    $('#rotina-horario').value = r.horario;
+    $('#rotina-dataInicio').value = r.dataInicio;
+    $('#rotina-frequencia').value = r.frequencia;
+    $('#rotina-frequencia').dispatchEvent(new Event('change'));
+    if(r.frequencia === 'semanal') $('#rotina-diaSemana').value = r.diaSemana;
+    modalRotina.showModal();
+  };
+
+  window.excluirRotina = id => {
+    customConfirm("Excluir Rotina", "Parar de ser lembrado desta rotina?", () => {
+      state.rotinas = state.rotinas.filter(x => x.id !== id);
+      saveCloud(); renderRotinas(); refreshDashboard();
+    });
+  };
+
+  $('#modal-rotina-close').onclick = () => modalRotina.close();
+  $('#modal-rotina-cancel').onclick = () => modalRotina.close();
+  $('#form-rotina').onsubmit = e => {
+    e.preventDefault();
+    if(!$('#rotina-medId').value) return;
+    const id = $('#rotina-id').value;
+    const payload = {
+      id: id || ('r_' + Date.now()),
+      medId: $('#rotina-medId').value,
+      horario: $('#rotina-horario').value,
+      dataInicio: $('#rotina-dataInicio').value,
+      frequencia: $('#rotina-frequencia').value,
+      diaSemana: $('#rotina-frequencia').value === 'semanal' ? parseInt($('#rotina-diaSemana').value) : null
+    };
+    if(id) {
+      const idx = state.rotinas.findIndex(x => x.id === id);
+      if(idx>=0) state.rotinas[idx] = payload;
+    } else { state.rotinas.push(payload); }
+    saveCloud(); renderRotinas(); refreshDashboard(); modalRotina.close(); showToast("Rotina salva.");
+  };
+
+  function traduzirFrequencia(r) {
+    if(r.frequencia==='diario') return "Todos os dias";
+    if(r.frequencia==='dsdn') return "Dia sim, dia não";
+    if(r.frequencia==='1s2n') return "1 dia sim, 2 dias não";
+    if(r.frequencia==='semanal') {
+      const dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+      return "Semanal (" + dias[r.diaSemana] + ")";
+    }
+    return r.frequencia;
+  }
+
+  function renderRotinas() {
+    const tbody = $('#table-rotinas-body');
+    if(state.rotinas.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500">Nenhuma rotina configurada.</td></tr>`;
+      return;
+    }
+    // Join rotinas com meds
+    const rows = state.rotinas.map(r => {
+      const m = state.medicamentos.find(x => x.id === r.medId) || {nome:'Medicamento excluído', dosagem:''};
+      return { ...r, medNome: m.nome, medDosagem: m.dosagem };
+    }).sort((a,b) => a.horario.localeCompare(b.horario));
+
+    tbody.innerHTML = rows.map(r => `
+      <tr class="hover:bg-slate-50 transition border-b border-slate-100 last:border-0">
+        <td class="p-4"><strong class="text-indigo-800">${esc(r.medNome)}</strong> <span class="text-xs text-slate-500">(${esc(r.medDosagem)})</span></td>
+        <td class="p-4 text-center font-bold text-slate-700">${formatarHora(r.horario)}</td>
+        <td class="p-4 text-slate-700">${traduzirFrequencia(r)}</td>
+        <td class="p-4 text-center text-slate-500">${formatDataBR(r.dataInicio)}</td>
+        <td class="p-4 text-center whitespace-nowrap">
+          <button class="bg-sky-50 text-sky-600 px-3 py-1 rounded hover:bg-sky-100 mr-2 font-medium" onclick="window.editarRotina('${r.id}')">Editar</button>
+          <button class="bg-red-50 text-red-600 px-3 py-1 rounded hover:bg-red-100 font-medium" onclick="window.excluirRotina('${r.id}')">Excluir</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function deveTomarNesteDia(rotina, dataAlvoStr) {
+    if (dataAlvoStr < rotina.dataInicio) return false;
+    
+    if (rotina.frequencia === 'diario') return true;
+    
+    if (rotina.frequencia === 'semanal') {
+      return diaDaSemana(dataAlvoStr) === rotina.diaSemana;
+    }
+    
+    const diff = diffDias(rotina.dataInicio, dataAlvoStr);
+    
+    if (rotina.frequencia === 'dsdn') {
+      return diff % 2 === 0;
+    }
+    
+    if (rotina.frequencia === '1s2n') {
+      return diff % 3 === 0;
+    }
+    
+    return false;
+  }
+
+  // --- Lembretes locais por notificação do navegador ---
+  const NOTIF_ENABLED_KEY = 'med_notifications_enabled_v1';
+  const NOTIF_SENT_KEY = 'med_notifications_sent_v1';
+  let notificationTimer = null;
+
+  function localDateString(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function updateNotificationStatus() {
+    const status = $('#notification-status');
+    const enableButton = $('#btn-enable-notifications');
+    const supported = 'Notification' in window;
+    if (!supported) {
+      status.textContent = 'Este navegador não oferece suporte a notificações. Abra o app no Chrome atualizado.';
+      enableButton.disabled = true;
+      enableButton.classList.add('opacity-50', 'cursor-not-allowed');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      status.textContent = 'Notificações bloqueadas. Altere a permissão do site nas configurações do navegador/celular.';
+    } else if (Notification.permission === 'granted' && localStorage.getItem(NOTIF_ENABLED_KEY) === 'true') {
+      status.textContent = '✅ Notificações ativadas neste dispositivo.';
+    } else if (Notification.permission === 'granted') {
+      status.textContent = 'Permissão concedida. Toque em “Ativar notificações” para habilitar os lembretes.';
+    } else {
+      status.textContent = 'Notificações ainda não autorizadas.';
+    }
+  }
+
+  async function enableMedicationNotifications() {
+    if (!('Notification' in window)) {
+      showToast('Este navegador não suporta notificações.');
+      updateNotificationStatus();
+      return;
+    }
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.protocol !== 'file:') {
+      showToast('Abra o aplicativo em uma página HTTPS para ativar notificações.');
+      return;
+    }
+    try {
+      const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+      if (permission !== 'granted') {
+        showToast('Permissão de notificação não concedida. Confira as configurações do navegador.');
+        updateNotificationStatus();
+        return;
+      }
+      localStorage.setItem(NOTIF_ENABLED_KEY, 'true');
+      updateNotificationStatus();
+      checkMedicationNotifications();
+      showToast('Lembretes ativados neste dispositivo.');
+    } catch (err) {
+      showToast('Não foi possível ativar notificações: ' + (err.message || 'erro do navegador'));
+    }
+  }
+
+  function sendMedicationNotification(title, body, tag) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      const n = new Notification(title, { body, tag, icon: 'https://cdn-icons-png.flaticon.com/512/822/822143.png', vibrate: [200, 100, 200], renotify: false });
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch (err) {
+      console.warn('Falha ao exibir notificação:', err);
+    }
+  }
+
+  function checkMedicationNotifications() {
+    if (localStorage.getItem(NOTIF_ENABLED_KEY) !== 'true' || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const now = new Date();
+    const today = localDateString(now);
+    let sent = {};
+    try { sent = JSON.parse(localStorage.getItem(NOTIF_SENT_KEY) || '{}'); } catch (_) { sent = {}; }
+
+    state.rotinas.forEach(rotina => {
+      if (!deveTomarNesteDia(rotina, today)) return;
+      const taken = state.historico.some(h => h.rotinaId === rotina.id && h.data === today);
+      if (taken) return;
+      const [hour, minute] = String(rotina.horario || '').split(':').map(Number);
+      if (!Number.isFinite(hour) || !Number.isFinite(minute)) return;
+      const due = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+      const diffMs = now.getTime() - due.getTime();
+      // Janela de 5 minutos evita avisos antigos ao reabrir o app horas depois.
+      if (diffMs < 0 || diffMs > 5 * 60 * 1000) return;
+      const sentKey = `${today}_${rotina.id}`;
+      if (sent[sentKey]) return;
+      const med = state.medicamentos.find(m => m.id === rotina.medId);
+      if (!med) return;
+      sendMedicationNotification('Hora do medicamento 💊', `${med.nome} — ${med.dosagem}. Horário programado: ${rotina.horario}.`, sentKey);
+      sent[sentKey] = new Date().toISOString();
+      localStorage.setItem(NOTIF_SENT_KEY, JSON.stringify(sent));
+    });
+
+    // Mantém somente registros recentes para evitar crescimento indefinido.
+    const keys = Object.keys(sent);
+    if (keys.length > 300) {
+      const keep = {};
+      keys.slice(-200).forEach(k => keep[k] = sent[k]);
+      localStorage.setItem(NOTIF_SENT_KEY, JSON.stringify(keep));
+    }
+  }
+
+  $('#btn-enable-notifications').onclick = enableMedicationNotifications;
+  $('#btn-test-notification').onclick = () => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+      showToast('Primeiro toque em “Ativar notificações” e permita o acesso.');
+      return;
+    }
+    sendMedicationNotification('MediControl — teste', 'As notificações estão funcionando neste dispositivo.', 'medicontrol-test');
+    showToast('Notificação de teste enviada.');
+  };
+
+  function startMedicationNotificationChecks() {
+    updateNotificationStatus();
+    if (notificationTimer) clearInterval(notificationTimer);
+    checkMedicationNotifications();
+    notificationTimer = setInterval(checkMedicationNotifications, 15000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) checkMedicationNotifications();
+    });
+    window.addEventListener('focus', checkMedicationNotifications);
+  }
+
+  function getMedicamentosDoDia(dataStr) {
+    const medsDoDia = [];
+    state.rotinas.forEach(r => {
+      if (deveTomarNesteDia(r, dataStr)) {
+        const m = state.medicamentos.find(x => x.id === r.medId);
+        if (m) {
+          const isTomado = state.historico.some(h => h.rotinaId === r.id && h.data === dataStr);
+          medsDoDia.push({ ...r, medObj: m, tomado: isTomado });
+        }
+      }
+    });
+    return medsDoDia.sort((a,b) => a.horario.localeCompare(b.horario));
+  }
+
+  window.toggleTomado = function(rotinaId, dataStr, elCheckbox) {
+    const isChecked = elCheckbox.checked;
+    if (isChecked) {
+      // Registrar no histórico
+      const horaStr = new Date().toTimeString().split(' ')[0];
+      state.historico.push({ id: 'h_'+Date.now(), rotinaId, data: dataStr, horaTomado: horaStr });
+      elCheckbox.closest('.med-card').classList.add('opacity-60', 'bg-emerald-50');
+    } else {
+      // Remover do histórico
+      state.historico = state.historico.filter(h => !(h.rotinaId === rotinaId && h.data === dataStr));
+      elCheckbox.closest('.med-card').classList.remove('opacity-60', 'bg-emerald-50');
+    }
+    saveCloud(); // Auto save
+  };
+
+  function renderDayList(containerId, dataStr, showCheckbox = true) {
+    const meds = getMedicamentosDoDia(dataStr);
+    const c = $('#' + containerId);
+    
+    if (meds.length === 0) {
+      c.innerHTML = `<div class="p-4 bg-slate-50 text-slate-500 rounded-xl text-center text-sm border border-slate-200 border-dashed">Nenhum medicamento agendado para este dia.</div>`;
+      return;
+    }
+
+    c.innerHTML = meds.map(m => {
+      const cardClasses = m.tomado ? "med-card flex items-center p-4 bg-emerald-50 border border-emerald-200 rounded-xl transition opacity-60" : "med-card flex items-center p-4 bg-white border border-slate-200 rounded-xl transition shadow-sm";
+      const checkHTML = showCheckbox 
+        ? `<input type="checkbox" class="med-checkbox shrink-0 ml-4" ${m.tomado?'checked':''} onchange="window.toggleTomado('${m.id}', '${dataStr}', this)">`
+        : `<div class="shrink-0 ml-4 bg-slate-100 text-slate-400 p-1.5 rounded-lg text-xs font-bold">${formatarHora(m.horario)}</div>`;
+
+      return `
+        <label class="${cardClasses} cursor-pointer hover:shadow-md">
+          <div class="bg-indigo-100 text-indigo-700 font-bold text-lg px-3 py-2 rounded-lg mr-4 shrink-0">
+            ${formatarHora(m.horario)}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="font-bold text-slate-800 truncate">${esc(m.medObj.nome)}</div>
+            <div class="text-sm text-slate-500 truncate">${esc(m.medObj.dosagem)} ${m.medObj.obs ? `• ${esc(m.medObj.obs)}` : ''}</div>
+          </div>
+          ${checkHTML}
+        </label>
+      `;
+    }).join('');
+  }
+
+  function refreshDashboard() {
+    const hojeObj = new Date();
+    const amanhaObj = new Date(hojeObj);
+    amanhaObj.setDate(amanhaObj.getDate() + 1);
+
+    const hojeStr = hojeObj.toISOString().split('T')[0];
+    const amanhaStr = amanhaObj.toISOString().split('T')[0];
+
+    $('#data-hoje').textContent = formatDataBR(hojeStr);
+    $('#data-amanha').textContent = formatDataBR(amanhaStr);
+
+    renderDayList('lista-hoje', hojeStr, true);
+    renderDayList('lista-amanha', amanhaStr, false);
+
+    // Grid da Semana (Próximos 7 dias)
+    const grid = $('#grid-semana');
+    const diasNomes = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    let gridHTML = '';
+
+    for(let i=0; i<7; i++) {
+      const d = new Date(hojeObj);
+      d.setDate(d.getDate() + i);
+      const dStr = d.toISOString().split('T')[0];
+      const diaTxt = i===0 ? 'Hoje' : i===1 ? 'Amanhã' : diasNomes[d.getDay()];
+      
+      const medsDay = getMedicamentosDoDia(dStr);
+      let dots = medsDay.map(m => `<div class="text-xs truncate bg-indigo-50 text-indigo-700 mb-1 px-1.5 py-0.5 rounded border border-indigo-100" title="${m.medObj.nome}">${formatarHora(m.horario)} ${m.medObj.nome}</div>`).join('');
+      if(medsDay.length===0) dots = `<div class="text-xs text-slate-400 italic mt-2">Livre</div>`;
+
+      const isToday = i===0;
+      gridHTML += `
+        <div class="w-36 shrink-0 bg-white border ${isToday?'border-emerald-300':'border-slate-200'} rounded-xl p-3 flex flex-col shadow-sm">
+          <div class="text-xs font-bold ${isToday?'text-emerald-600':'text-slate-500'} mb-1">${diaTxt}</div>
+          <div class="text-sm font-bold text-slate-800 border-b pb-2 mb-2">${d.getDate()}/${(d.getMonth()+1).toString().padStart(2,'0')}</div>
+          <div class="flex-1 overflow-y-auto max-h-32">
+            ${dots}
+          </div>
+        </div>
+      `;
+    }
+    grid.innerHTML = gridHTML;
+  }
+
+  const tabs = {
+    'btn-tab-inicio': 'view-inicio',
+    'btn-tab-meds': 'view-meds',
+    'btn-tab-rotinas': 'view-rotinas',
+    'btn-tab-config': 'view-config'
+  };
+
+  Object.keys(tabs).forEach(btnId => {
+    $('#' + btnId).onclick = () => {
+      Object.keys(tabs).forEach(b => {
+        $('#' + b).className = "bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm";
+        $('#' + tabs[b]).classList.add('hidden');
+      });
+      // Active state styling
+      if(btnId === 'btn-tab-inicio') $('#' + btnId).className = "bg-teal-900 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm";
+      else $('#' + btnId).className = "bg-teal-900 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm";
+      
+      $('#' + tabs[btnId]).classList.remove('hidden');
+
+      if (btnId === 'btn-tab-inicio') refreshDashboard();
+      if (btnId === 'btn-tab-meds') renderMeds();
+      if (btnId === 'btn-tab-rotinas') renderRotinas();
+    };
+  });
+
+  function refreshAll() {
+    renderMeds();
+    renderRotinas();
+    refreshDashboard();
+  }
+
+  // Init
+  loadLocalData();
+  refreshAll();
+  startMedicationNotificationChecks();
+
+})();
+</script>
+<script>
+  // Registro do Service Worker para instalação PWA e cache básico do app.
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(err => console.warn('PWA SW:', err)));
+  }
+</script>
+</body>
+</html>
