@@ -1,25 +1,41 @@
-# MediControl PWA com login Google
+MEDICONTROL v2.1.0 — PWA, login e histórico com leitura de receita por IA
 
-## Conteúdo
-- `index.html`: aplicativo principal (mantém login tradicional por e-mail/senha e adiciona Google OAuth).
-- `Controle_de_Medicamentos_PWA_OAuth_Google.html`: cópia com nome descritivo.
-- `manifest.webmanifest`, `sw.js` e `icons/`: instalação PWA e cache básico.
-- `Supabase_Controle_Medicamentos_setup.sql`: SQL necessário para a tabela/RLS.
+O QUE FOI INCLUÍDO
+- Tela de entrada obrigatória com e-mail/senha, criação de conta, recuperação de senha e Google OAuth.
+- Subtítulo com a versão do aplicativo.
+- Histórico de medicamentos receitados ou tomados eventualmente, com cadastro, edição, exclusão, data, duração em dias, paciente, médico, hospital/clínica, dose, posologia e observações.
+- Consulta separada do histórico de medicamentos tomados nas rotinas, com filtros por medicamento e período, data/hora e exportação CSV.
+- Indicador de nuvem mostra a data e hora local do último registro gravado com sucesso; o cache PWA foi atualizado para evitar servir a versão anterior.
+- Busca geral e filtros por data, pessoa, médico, hospital, medicamento e situação.
+- Botão de leitura de receita por IA para preencher um rascunho. O usuário deve conferir os campos antes de salvar.
+- PWA com manifest, service worker e ícones.
+- SQL de configuração de uma tabela privada por usuário.
 
-## Publicação recomendada (GitHub Pages)
-1. Crie um repositório para o MediControl e envie **todos os arquivos e a pasta `icons`** para a raiz da branch `main`.
-2. Ative Settings → Pages → Deploy from a branch → `main` / `/ (root)`.
-3. Abra a URL HTTPS publicada, entre em **Nuvem & Config**, informe o Project URL e a chave pública (`publishable`/`anon`) do projeto Supabase e clique em **Salvar configuração**.
-4. Para Google OAuth, no Supabase acesse Authentication → Sign In / Providers → Google e habilite o provedor usando o Client ID e Client Secret do Google Cloud. O Client Secret fica **somente no Supabase**, nunca neste HTML.
-5. No Google Cloud, cadastre como origem autorizada o domínio do GitHub Pages (ex.: `https://SEU-USUARIO.github.io`) e como URI de redirecionamento autorizado o callback exibido pelo Supabase (formato `https://SEU-PROJETO.supabase.co/auth/v1/callback`).
-6. No Supabase → Authentication → URL Configuration, defina a Site URL para a URL publicada do app e inclua a URL publicada exata em Redirect URLs (por exemplo `https://SEU-USUARIO.github.io/SEU-REPOSITORIO/`).
-7. No app, clique em **Entrar com Google**. O login por e-mail/senha continua disponível.
-8. No Android/Chrome, abra a URL publicada e use o menu ⋮ → **Instalar app** ou **Adicionar à tela inicial**.
+IMPORTANTE SOBRE O SUPABASE
+Este pacote não cria um projeto remoto na sua conta nem consegue descobrir suas credenciais. Para separar o MediControl dos projetos Nutri/Estudos, crie/seleciona o projeto dedicado ao MediControl no painel Supabase. Depois: 
+1. Abra SQL Editor nesse projeto e execute Supabase_MediControl_v2_setup.sql.
+2. Em Project Settings / API Keys, copie a Project URL e a chave pública (publishable ou anon). NUNCA use service_role ou sb_secret.
+3. Edite supabase-config.js e substitua os dois valores de exemplo pela URL e chave pública do projeto dedicado. Este é o único arquivo de configuração do frontend. A chave pública não é segredo; as políticas RLS protegem os dados.
+4. Em Authentication, habilite Email/Password. Se quiser login Google, habilite o provedor Google e inclua o URL publicado do MediControl em Authentication / URL Configuration / Redirect URLs.
+5. Publique TODOS os arquivos e pastas deste pacote em HTTPS, preservando os caminhos. Para GitHub Pages, index.html é a página inicial.
+6. No celular, abra a URL publicada no Chrome e escolha Instalar app. Após substituir arquivos, feche e reabra o PWA para o service worker novo ser ativado.
 
-## Importante sobre lembretes
-O PWA inclui lembretes locais por Notification API, mas o navegador pode suspender a página quando o app está fechado. Este pacote **não implementa push remoto**; portanto não garante avisos com o app fechado. Para isso seria necessário configurar um serviço push/servidor e o envio de notificações agendadas.
+CONFIGURAÇÃO DA LEITURA POR IA (REQUER UMA ETAPA ADICIONAL)
+A leitura usa uma Supabase Edge Function e a API do Google Gemini. A chave Gemini fica no servidor, nunca no HTML. Requer Supabase CLI e uma chave Gemini válida.
+1. Instale e autentique a Supabase CLI.
+2. Edite supabase/config.toml para usar o project ref do projeto dedicado.
+3. No terminal, dentro desta pasta, execute: supabase link --project-ref SEU_PROJECT_REF_MEDICONTROL
+4. Configure o segredo: supabase secrets set GEMINI_API_KEY=SUA_CHAVE_GEMINI
+5. Publique a função: supabase functions deploy parse-prescription
+A função exige sessão autenticada (verify_jwt = true). Se não for implantada, login e histórico continuam funcionando; somente o botão de IA retornará erro explicativo.
 
-## Segurança e dados
-- Use somente a chave pública `publishable`/`anon` no app. Nunca coloque `service_role` ou o Client Secret do Google no HTML.
-- A tabela `medication_data` e as políticas RLS devem estar configuradas pelo SQL fornecido.
-- A URL e a chave pública do Supabase são configuradas dentro do app e persistidas no navegador.
+PRIVACIDADE E LIMITES DA IA
+- A imagem da receita é enviada à Edge Function do Supabase e processada pelo Google Gemini. Não é armazenada pelo MediControl por padrão.
+- Receitas contêm dados de saúde; envie apenas se concordar com esse processamento.
+- A leitura pode errar, principalmente em receitas manuscritas. Sempre confira com o original. Não use a IA para decidir doses ou alterar tratamento.
+
+DADOS E MIGRAÇÃO
+O app usa medication_data.data (JSONB) para guardar medicamentos, rotinas, histórico de doses e historicosMedicamentos. A RLS restringe cada registro à própria conta autenticada. Se o projeto novo já tiver dados locais antigos neste navegador, faça um backup JSON antes de entrar e sincronizar.
+
+VALIDAÇÃO REAL
+O pacote foi validado quanto à sintaxe JavaScript e estrutura dos arquivos. A conexão Supabase, o OAuth Google e a chamada Gemini dependem das credenciais e configurações da sua conta, então precisam ser testados após publicação.

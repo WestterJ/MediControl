@@ -4,14 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f766e">
-<meta name="description" content="MediControl: controle de medicamentos, rotinas e lembretes.">
+<meta name="description" content="MediControl v2.1.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>Controle de Medicamentos & Rotinas</title>
+<title>MediControl v2.1.0 — Medicamentos & Rotinas</title>
+<script src="./supabase-config.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
+  body.auth-locked > header, body.auth-locked > main { display:none !important; }
+  #auth-gate { display:none; }
+  body.auth-locked #auth-gate { display:flex; }
+  #auth-gate input { color:#172033; }
+  #auth-gate .auth-field { width:100%; padding:.7rem .8rem; border:1px solid #cbd5e1; border-radius:.65rem; background:white; font-size:14px; }
+  #auth-gate .auth-btn { padding:.7rem 1rem; border-radius:.65rem; font-weight:700; font-size:14px; }
+  #auth-gate .auth-btn:disabled { opacity:.55; cursor:wait; }
   body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; background: #f0fdfa; color: #0f172a; }
   
   .glass-card {
@@ -51,7 +59,31 @@
   }
 </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col auth-locked">
+<div id="auth-gate" class="fixed inset-0 z-[1000] items-center justify-center p-4 bg-slate-100/95 overflow-y-auto" role="main" aria-labelledby="auth-title">
+  <section class="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden my-auto">
+    <div class="bg-teal-800 text-white px-6 py-5 border-b-4 border-teal-400">
+      <div class="text-3xl mb-2">💊</div><h1 id="auth-title" class="text-xl font-bold">MediControl</h1>
+      <p class="text-sm text-teal-100 mt-1">Medicamentos, rotinas e histórico de tratamentos</p>
+      <p class="text-xs text-teal-100 mt-2">Versão 2.1.0 · PWA</p>
+    </div>
+    <div class="p-6 space-y-4">
+      <div id="auth-normal-fields" class="space-y-3">
+        <label class="block"><span class="block text-xs font-semibold text-slate-600 mb-1">E-mail</span><input id="auth-email" class="auth-field" type="email" autocomplete="username" placeholder="voce@exemplo.com"></label>
+        <label class="block"><span class="block text-xs font-semibold text-slate-600 mb-1">Senha</span><input id="auth-password" class="auth-field" type="password" autocomplete="current-password" placeholder="Sua senha"></label>
+        <button id="auth-login" type="button" class="auth-btn w-full bg-teal-700 hover:bg-teal-800 text-white">Entrar</button>
+        <button id="auth-google" type="button" class="auth-btn w-full border border-slate-300 bg-white text-slate-800 hover:bg-slate-50">🌐 Continuar com Google</button>
+        <div class="grid grid-cols-2 gap-2"><button id="auth-signup" type="button" class="auth-btn border border-emerald-600 text-emerald-800 hover:bg-emerald-50">Criar conta</button><button id="auth-forgot" type="button" class="auth-btn border border-slate-300 text-slate-700 hover:bg-slate-50">Esqueci a senha</button></div>
+      </div>
+      <div id="auth-recovery-fields" class="hidden space-y-3">
+        <h2 class="font-bold text-slate-800">Definir nova senha</h2><label class="block"><span class="block text-xs font-semibold text-slate-600 mb-1">Nova senha (mínimo 8 caracteres)</span><input id="auth-new-password" class="auth-field" type="password" autocomplete="new-password" minlength="8"></label>
+        <button id="auth-update-password" type="button" class="auth-btn w-full bg-teal-700 text-white">Salvar nova senha</button><button id="auth-back-login" type="button" class="auth-btn w-full border border-slate-300 text-slate-700">Voltar ao login</button>
+      </div>
+      <p id="auth-message" class="text-sm rounded-lg p-3 bg-slate-50 text-slate-700" role="status" aria-live="polite">Entre para acessar seus registros sincronizados.</p>
+      <p class="text-xs text-slate-500">A conexão do banco é configurada uma única vez na implantação. Seus registros ficam associados à sua conta.</p>
+    </div>
+  </section>
+</div>
 
 <header class="bg-teal-700 text-white shadow-md sticky top-0 z-30 border-b-4 border-teal-500">
   <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
@@ -59,17 +91,18 @@
       <div class="bg-white text-teal-700 p-2 rounded-xl font-bold text-xl shadow-inner">💊</div>
       <div>
         <h1 class="text-lg md:text-xl font-bold tracking-tight">MediControl</h1>
-        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas</small>
+        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas · v2.1.0</small>
       </div>
     </div>
     
     <div class="flex items-center flex-wrap gap-2 relative">
-      <button id="btn-cloud-status" class="text-xs px-3 py-1.5 rounded-full bg-amber-600 text-white border border-amber-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-amber-500" title="Clique para sincronizar agora com a nuvem">
-        <span id="cloud-status-icon">💾</span> <span id="cloud-status-text">Armazenamento Local</span>
+      <button id="btn-cloud-status" class="text-xs px-3 py-1.5 rounded-full bg-amber-600 text-white border border-amber-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-amber-500" title="Nuvem: data e horário do último salvamento. Clique para sincronizar agora.">
+        <span id="cloud-status-icon">☁️</span> <span id="cloud-status-text">Nuvem · aguardando</span>
       </button>
 
       <button id="btn-tab-inicio" class="bg-teal-900 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">🏠 Início</button>
       <button id="btn-tab-meds" class="bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">💊 Medicamentos</button>
+      <button id="btn-tab-historico" class="bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">📋 Histórico</button>
       <button id="btn-tab-rotinas" class="bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">⏰ Rotinas</button>
       <button id="btn-tab-config" class="bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold px-3 py-2 rounded-lg transition shadow-sm">☁️ Nuvem & Config</button>
       
@@ -78,7 +111,7 @@
         <div class="absolute right-0 mt-2 w-[90vw] md:w-80 max-w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl z-[100] p-2.5 flex flex-col gap-1.5 text-slate-700 text-sm">
           <div class="text-xs font-bold text-slate-400 uppercase px-2 py-0.5">Sincronização /apps/dados/</div>
           
-          <button id="btn-menu-sync-supabase" class="text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800 rounded-lg transition font-semibold flex items-center gap-2 border border-emerald-200">☁️ Sincronizar Supabase</button>
+          <button id="btn-menu-sync-supabase" class="text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800 rounded-lg transition font-semibold flex items-center gap-2 border border-emerald-200">☁️ Sincronizar com a nuvem</button>
           <hr class="my-1 border-slate-100">
           <button id="btn-exportar-json" class="text-left px-3 py-2 hover:bg-slate-100 rounded-lg transition font-semibold text-emerald-800">⬇️ Exportar Backup Local (JSON)</button>
           <button id="btn-importar-json" class="text-left px-3 py-2 hover:bg-slate-100 rounded-lg transition font-semibold text-sky-800">⬆️ Importar Backup (JSON)</button>
@@ -185,19 +218,55 @@
     </div>
   </div>
 
+
+  <!-- MODULO: HISTÓRICO DE MEDICAMENTOS EVENTUAIS -->
+  <div id="view-historico" class="hidden space-y-6">
+    <section class="glass-card rounded-2xl p-5 shadow-sm border-t-4 border-t-emerald-500 space-y-4">
+      <div>
+        <h2 class="text-lg font-bold text-slate-800">📅 Histórico das rotinas — medicamentos tomados</h2>
+        <p class="text-sm text-slate-500">Consulte os medicamentos marcados como tomados no painel Início, com data e horário do registro.</p>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label class="text-xs font-semibold text-slate-600">Medicamento<input id="rot-hist-medicamento" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal" placeholder="Filtrar medicamento"></label>
+        <label class="text-xs font-semibold text-slate-600">Data inicial<input id="rot-hist-de" type="date" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal"></label>
+        <label class="text-xs font-semibold text-slate-600">Data final<input id="rot-hist-ate" type="date" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal"></label>
+      </div>
+      <div class="flex flex-wrap gap-2"><button id="btn-rot-hist-limpar" class="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold">Limpar filtros</button><button id="btn-rot-hist-exportar" class="px-3 py-2 bg-emerald-700 text-white rounded-lg text-sm font-semibold">Exportar CSV</button></div>
+      <p id="rot-hist-resultados" class="text-xs text-slate-500"></p>
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table class="w-full text-left text-sm min-w-[600px]"><thead class="bg-slate-100 text-slate-700 text-xs uppercase"><tr><th class="p-3">Data</th><th class="p-3">Horário tomado</th><th class="p-3">Medicamento</th><th class="p-3">Dose</th><th class="p-3">Rotina</th></tr></thead><tbody id="rot-hist-body" class="divide-y divide-slate-100"></tbody></table>
+      </div>
+    </section>
+    <section class="glass-card rounded-2xl p-5 shadow-sm border-t-4 border-t-violet-500 space-y-4">
+      <div class="flex flex-wrap justify-between items-center gap-3"><div><h2 class="text-lg font-bold text-slate-800">Histórico de medicamentos</h2><p class="text-sm text-slate-500">Registre medicamentos receitados ou tomados eventualmente e consulte por qualquer informação.</p></div><button id="btn-novo-historico" class="bg-violet-700 hover:bg-violet-800 text-white text-sm font-semibold px-4 py-2 rounded-lg">＋ Novo registro</button></div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <label class="text-xs font-semibold text-slate-600">Busca geral<input id="hist-busca" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal" placeholder="Medicamento, pessoa, médico, hospital..."></label>
+        <label class="text-xs font-semibold text-slate-600">Data inicial<input id="hist-data-de" type="date" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal"></label>
+        <label class="text-xs font-semibold text-slate-600">Data final<input id="hist-data-ate" type="date" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal"></label>
+        <label class="text-xs font-semibold text-slate-600">Pessoa que tomou<input id="hist-pessoa" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal" placeholder="Nome do paciente"></label>
+        <label class="text-xs font-semibold text-slate-600">Médico<input id="hist-medico" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal" placeholder="Nome do médico"></label>
+        <label class="text-xs font-semibold text-slate-600">Hospital / clínica<input id="hist-hospital" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal" placeholder="Hospital ou clínica"></label>
+        <label class="text-xs font-semibold text-slate-600">Medicamento<input id="hist-medicamento" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal" placeholder="Nome do medicamento"></label>
+        <label class="text-xs font-semibold text-slate-600">Tipo<select id="hist-tipo-filtro" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal"><option value="">Todos</option><option value="receitado">Receitado</option><option value="tomado">Tomado eventualmente</option></select></label>
+        <div class="flex items-end"><button id="btn-limpar-filtros-hist" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold">Limpar filtros</button></div>
+      </div>
+      <p id="hist-resultados" class="text-xs text-slate-500"></p><div id="historico-lista" class="space-y-3"></div>
+    </section>
+  </div>
+
   <!-- MODULO: CONFIGURAÇÕES & NUVEM -->
   <div id="view-config" class="hidden space-y-6 max-w-3xl mx-auto">
     <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-      <h2 class="text-lg font-bold text-slate-800 mb-1">☁️ Sincronização automática (Supabase)</h2>
-      <p class="text-sm text-slate-500 mb-4">Configure o projeto, crie sua conta e entre com o mesmo e-mail no computador e no celular. Os dados são separados por usuário.</p>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <h2 class="text-lg font-bold text-slate-800 mb-1">☁️ Sincronização automática na nuvem</h2>
+      <p class="text-sm text-slate-500 mb-4">A conexão é configurada uma única vez na implantação. O indicador no topo mostra a data e o horário do último registro gravado na nuvem.</p>
+      <div class="hidden grid grid-cols-1 md:grid-cols-2 gap-3">
         <div><label class="block text-sm font-semibold text-slate-600 mb-1">Project URL</label><input type="url" id="config-supabase-url" placeholder="https://seuprojeto.supabase.co" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
         <div><label class="block text-sm font-semibold text-slate-600 mb-1">Publishable / anon key</label><input type="password" id="config-supabase-key" placeholder="sb_publishable_... ou anon key" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
         <div><label class="block text-sm font-semibold text-slate-600 mb-1">E-mail</label><input type="email" id="config-supabase-email" placeholder="voce@exemplo.com" autocomplete="email" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
         <div><label class="block text-sm font-semibold text-slate-600 mb-1">Senha</label><input type="password" id="config-supabase-password" placeholder="Sua senha" autocomplete="current-password" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
       </div>
       <p id="supabase-help" class="text-xs text-slate-500 mt-3">Execute o SQL de configuração no SQL Editor do Supabase. Use somente a chave pública (publishable/anon), nunca service_role. Para Google, habilite o provedor Google em Supabase → Authentication → Sign In / Providers.</p>
-      <div class="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div class="hidden pt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
         <button type="button" id="btn-supabase-save-config" class="px-3 py-2.5 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold">Salvar configuração</button>
         <button type="button" id="btn-supabase-signup" class="px-3 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-semibold">Criar conta</button>
         <button type="button" id="btn-supabase-login" class="px-3 py-2.5 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-sm font-semibold">Entrar e sincronizar</button>
@@ -352,6 +421,29 @@
   </form>
 </dialog>
 
+
+<dialog id="modal-historico" class="rounded-2xl p-0 w-full max-w-2xl shadow-2xl backdrop:bg-slate-900/50">
+  <div class="bg-violet-700 text-white px-6 py-4 flex justify-between items-center"><h3 id="modal-historico-title" class="font-bold text-lg">Novo histórico de medicamento</h3><button id="modal-historico-close" type="button" class="text-white font-bold text-xl">×</button></div>
+  <form id="form-historico" class="p-5 md:p-6 space-y-4 max-h-[82vh] overflow-y-auto">
+    <input type="hidden" id="hist-id">
+    <div class="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2"><label class="block text-sm font-semibold text-violet-900">Ler receita com IA (imagem ou foto)<input id="hist-receita-arquivo" type="file" accept="image/*" capture="environment" class="mt-2 block w-full text-sm text-slate-700"></label><button id="btn-ler-receita-ia" type="button" class="px-4 py-2 bg-violet-700 hover:bg-violet-800 text-white rounded-lg text-sm font-semibold">✨ Ler receita por IA e preencher</button><p id="hist-ia-status" class="text-xs text-slate-600">A IA tenta extrair os campos da receita; confira e corrija tudo antes de salvar.</p></div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label class="text-sm font-semibold text-slate-700">Medicamento<input id="hist-med-nome" required class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Nome do medicamento"></label>
+      <label class="text-sm font-semibold text-slate-700">Dosagem / apresentação<input id="hist-med-dose" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Ex.: 500 mg, comprimido"></label>
+      <label class="text-sm font-semibold text-slate-700">Data da receita / uso<input id="hist-data" type="date" required class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal"></label>
+      <label class="text-sm font-semibold text-slate-700">Quantidade de dias<input id="hist-dias" type="number" min="1" max="3650" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Ex.: 7"></label>
+      <label class="text-sm font-semibold text-slate-700">Nome de quem tomou<input id="hist-paciente" required class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Nome do paciente"></label>
+      <label class="text-sm font-semibold text-slate-700">Médico prescritor<input id="hist-medico-nome" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Nome do médico"></label>
+      <label class="text-sm font-semibold text-slate-700">Hospital / clínica<input id="hist-hospital-nome" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Hospital ou clínica"></label>
+      <label class="text-sm font-semibold text-slate-700">Situação<select id="hist-tipo" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal"><option value="receitado">Receitado</option><option value="tomado">Tomado eventualmente</option></select></label>
+      <label class="text-sm font-semibold text-slate-700 sm:col-span-2">Posologia / frequência<input id="hist-posologia" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Conforme receita; conferir com o médico"></label>
+      <label class="text-sm font-semibold text-slate-700 sm:col-span-2">Observações<textarea id="hist-observacoes" rows="3" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Motivo, orientações ou observações"></textarea></label>
+    </div>
+    <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">A imagem é enviada ao Google Gemini por uma função segura do Supabase para leitura e não é salva pelo MediControl. Como contém dados de saúde, envie somente se concordar com esse processamento. A IA pode errar, especialmente em manuscritos: confira nome, dose, posologia e duração com a receita original. Não use a leitura como orientação médica.</p>
+    <div class="flex justify-end gap-2 border-t pt-3"><button id="modal-historico-cancel" type="button" class="px-4 py-2 border border-slate-300 rounded-lg text-sm">Cancelar</button><button type="submit" class="px-4 py-2 bg-violet-700 text-white rounded-lg text-sm font-bold">Salvar registro</button></div>
+  </form>
+</dialog>
+
 <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl opacity-0 pointer-events-none transition duration-300 z-50 text-sm"></div>
 
 <script>
@@ -410,7 +502,8 @@
   let state = {
     medicamentos: [], // {id, nome, dosagem, obs}
     rotinas: [],      // {id, medId, horario, frequencia, dataInicio, diaSemana}
-    historico: []     // {id, rotinaId, data, horaTomado}
+    historico: [],    // {id, rotinaId, data, horaTomado}
+    historicosMedicamentos: [] // registros de medicamentos receitados/tomados eventualmente
   };
 
   const STORAGE_KEY = 'med_control_cloud_api_v1';
@@ -418,23 +511,44 @@
   let cloudToken = localStorage.getItem('med_cloud_token') || '';
   let tempCloudDataToDownload = null;
 
+  const LAST_CLOUD_SAVE_KEY = 'med_last_cloud_saved_at_v1';
+  let lastCloudSavedAt = localStorage.getItem(LAST_CLOUD_SAVE_KEY) || '';
+  function formatCloudSavedAt(value) {
+    if (!value) return 'ainda não salvo';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return 'horário indisponível';
+    return d.toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+  function setCloudSavedAt(value, persist=true) {
+    if (!value) return;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return;
+    lastCloudSavedAt = d.toISOString();
+    if (persist) localStorage.setItem(LAST_CLOUD_SAVE_KEY, lastCloudSavedAt);
+    updateCloudStatusPill();
+  }
+
   function updateCloudStatusPill() {
     const pill = $('#btn-cloud-status');
     const icon = $('#cloud-status-icon');
     const text = $('#cloud-status-text');
-    
-    if (cloudProvider === 'supabase') {
-      pill.className = "text-xs px-3 py-1.5 rounded-full bg-emerald-700 text-white border border-emerald-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-emerald-600";
-      icon.textContent = "☁️"; text.textContent = "Supabase";
+    const when = formatCloudSavedAt(lastCloudSavedAt);
+    if (cloudProvider === 'supabase' && supabaseUser) {
+      pill.className = "text-xs px-3 py-1.5 rounded-full bg-emerald-700 text-white border border-emerald-500 font-medium truncate max-w-[260px] flex items-center gap-1 shadow-sm transition-all hover:bg-emerald-600";
+      icon.textContent = "☁️"; text.textContent = "Nuvem · " + when;
+      pill.title = "Último registro gravado na nuvem: " + when + ". Clique para sincronizar agora.";
     } else if (cloudProvider === 'google') {
-      pill.className = "text-xs px-3 py-1.5 rounded-full bg-sky-700 text-white border border-sky-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-sky-600";
-      icon.textContent = "☁️"; text.textContent = "Google Drive";
+      pill.className = "text-xs px-3 py-1.5 rounded-full bg-sky-700 text-white border border-sky-500 font-medium truncate max-w-[260px] flex items-center gap-1 shadow-sm transition-all hover:bg-sky-600";
+      icon.textContent = "☁️"; text.textContent = "Nuvem · " + when;
+      pill.title = "Último registro gravado na nuvem: " + when + ".";
     } else if (cloudProvider === 'onedrive') {
-      pill.className = "text-xs px-3 py-1.5 rounded-full bg-blue-700 text-white border border-blue-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-blue-600";
-      icon.textContent = "☁️"; text.textContent = "OneDrive";
+      pill.className = "text-xs px-3 py-1.5 rounded-full bg-blue-700 text-white border border-blue-500 font-medium truncate max-w-[260px] flex items-center gap-1 shadow-sm transition-all hover:bg-blue-600";
+      icon.textContent = "☁️"; text.textContent = "Nuvem · " + when;
+      pill.title = "Último registro gravado na nuvem: " + when + ".";
     } else {
-      pill.className = "text-xs px-3 py-1.5 rounded-full bg-amber-600 text-white border border-amber-500 font-medium truncate max-w-[210px] flex items-center gap-1 shadow-sm transition-all hover:bg-amber-500";
-      icon.textContent = "💾"; text.textContent = "Local";
+      pill.className = "text-xs px-3 py-1.5 rounded-full bg-amber-600 text-white border border-amber-500 font-medium truncate max-w-[260px] flex items-center gap-1 shadow-sm transition-all hover:bg-amber-500";
+      icon.textContent = "☁️"; text.textContent = "Nuvem · não conectado";
+      pill.title = "Dados ainda não sincronizados com a nuvem. Clique para abrir a configuração.";
     }
   }
 
@@ -448,7 +562,8 @@
         try {
           const { error } = await supabaseClient.from('medication_data').upsert({user_id:supabaseUser.id, data:state, updated_at:new Date().toISOString()}, {onConflict:'user_id'});
           if (error) throw error;
-          showToast('Dados sincronizados com Supabase.');
+          setCloudSavedAt(new Date().toISOString());
+          showToast('Dados sincronizados com a nuvem.');
         } finally { supabaseSaveInFlight = false; }
       } else if (cloudProvider !== 'local' && cloudToken) {
         showToast("Sincronizando com /apps/dados/...", true);
@@ -567,7 +682,8 @@
       state = {
         medicamentos: tempCloudDataToDownload.medicamentos || [],
         rotinas: tempCloudDataToDownload.rotinas || [],
-        historico: tempCloudDataToDownload.historico || []
+        historico: tempCloudDataToDownload.historico || [],
+        historicosMedicamentos: tempCloudDataToDownload.historicosMedicamentos || []
       };
       saveCloud(); refreshAll();
       showToast("Dados baixados da nuvem!");
@@ -579,8 +695,10 @@
 
   // --- Supabase: autenticação e sincronização automática ---
   let supabaseClient = null;
+  let supabaseClientKey = '';
   let supabaseUser = null;
-  let supabaseConfig = {url: localStorage.getItem('med_supabase_url') || '', key: localStorage.getItem('med_supabase_key') || ''};
+  const staticSupabaseConfig = window.MEDICONTROL_SUPABASE_CONFIG || {};
+  let supabaseConfig = {url: staticSupabaseConfig.url || localStorage.getItem('med_supabase_url') || '', key: staticSupabaseConfig.anonKey || staticSupabaseConfig.key || localStorage.getItem('med_supabase_key') || ''};
   let supabaseSaveInFlight = false;
   let supabaseSaveTimer = null;
 
@@ -592,7 +710,11 @@
     if (!window.supabase || !window.supabase.createClient) throw new Error('Biblioteca Supabase não carregou. Verifique a internet e recarregue a página.');
     supabaseConfig = {url,key};
     localStorage.setItem('med_supabase_url',url); localStorage.setItem('med_supabase_key',key);
-    if (!supabaseClient || supabaseClient.supabaseUrl !== url) supabaseClient = window.supabase.createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    // Recria o cliente quando a URL OU a chave mudar; evita reutilizar uma chave antiga após corrigir a configuração.
+    if (!supabaseClient || supabaseClient.supabaseUrl !== url || supabaseClientKey !== key) {
+      supabaseClient = window.supabase.createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+      supabaseClientKey = key;
+    }
     return supabaseClient;
   }
 
@@ -603,14 +725,14 @@
   }
 
   async function syncSupabaseNow(showMessage=true) {
-    if (!supabaseClient || !supabaseUser) { if(showMessage) showToast('Entre no Supabase antes de sincronizar.'); return; }
+    if (!supabaseClient || !supabaseUser) { if(showMessage) showToast('Entre na sua conta para sincronizar com a nuvem.'); return; }
     if (supabaseSaveInFlight) return;
     supabaseSaveInFlight = true;
     try {
-      if(showMessage) showToast('Sincronizando com Supabase...',true);
+      if(showMessage) showToast('Sincronizando com a nuvem...',true);
       const {error} = await supabaseClient.from('medication_data').upsert({user_id:supabaseUser.id,data:state,updated_at:new Date().toISOString()},{onConflict:'user_id'});
       if(error) throw error;
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudProvider='supabase'; localStorage.setItem('med_cloud_provider','supabase'); updateCloudStatusPill();
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudProvider='supabase'; localStorage.setItem('med_cloud_provider','supabase'); setCloudSavedAt(new Date().toISOString()); updateCloudStatusPill();
       if(showMessage) showToast('Dados sincronizados com a nuvem.');
     } catch(err) { console.error('Supabase sync error:',err); showToast('Falha na sincronização: '+(err.message || 'verifique URL, chave, tabela e RLS')+'. Os dados permanecem neste aparelho.'); }
     finally { supabaseSaveInFlight=false; }
@@ -620,16 +742,18 @@
 
   async function applySupabaseSession(session, initial=false) {
     supabaseUser = session && session.user ? session.user : null;
-    if(!supabaseUser) { if(cloudProvider==='supabase') cloudProvider='local'; updateCloudStatusPill(); return; }
+    if(!supabaseUser) { if(cloudProvider==='supabase') cloudProvider='local'; lockApp(); updateCloudStatusPill(); return; }
+    unlockApp();
     cloudProvider='supabase'; localStorage.setItem('med_cloud_provider','supabase'); updateCloudStatusPill();
     try {
       const remote=await supabaseReadRemote();
       if(remote && remote.data) {
+        if(remote.updated_at) setCloudSavedAt(remote.updated_at);
         if(initial) {
           tempCloudDataToDownload=remote.data;
           $('#sync-recommendation-box').innerHTML='Encontramos dados na conta Supabase. <strong>Baixar da Nuvem</strong> substitui os dados deste aparelho; <strong>Enviar Dados Atuais</strong> substitui os dados remotos.';
           $('#modal-sync-conflict').showModal();
-        } else { state={medicamentos:remote.data.medicamentos||[],rotinas:remote.data.rotinas||[],historico:remote.data.historico||[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); refreshAll(); showToast('Dados carregados do Supabase.'); }
+        } else { state={medicamentos:remote.data.medicamentos||[],rotinas:remote.data.rotinas||[],historico:remote.data.historico||[],historicosMedicamentos:remote.data.historicosMedicamentos||[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); refreshAll(); showToast('Dados carregados do Supabase.'); }
       } else { await syncSupabaseNow(true); }
     } catch(err) { showToast('Login realizado, mas não foi possível ler os dados: '+(err.message||'verifique a tabela/RLS')); }
   }
@@ -640,11 +764,30 @@
   $('#btn-supabase-google').onclick=async()=>{try{const c=readSupabaseForm();const redirectTo=window.location.origin+window.location.pathname;const {error}=await c.auth.signInWithOAuth({provider:'google',options:{redirectTo,queryParams:{prompt:'select_account'}}});if(error)throw error;}catch(err){showToast('Falha ao iniciar login Google: '+err.message);}};
   $('#btn-supabase-sync').onclick=()=>syncSupabaseNow(true);
   $('#btn-menu-sync-supabase').onclick=()=>{ $('#menu-nuvem').open=false; if(supabaseUser) syncSupabaseNow(true); else $('#btn-tab-config').click(); };
-  $('#btn-supabase-logout').onclick=async()=>{try{if(supabaseClient)await supabaseClient.auth.signOut();supabaseUser=null;cloudProvider='local';localStorage.setItem('med_cloud_provider','local');updateCloudStatusPill();showToast('Você saiu do Supabase. Os dados locais foram mantidos.');}catch(err){showToast('Erro ao sair: '+err.message);}};
+  $('#btn-supabase-logout').onclick=async()=>{try{if(supabaseClient)await supabaseClient.auth.signOut();supabaseUser=null;cloudProvider='local';localStorage.setItem('med_cloud_provider','local');lockApp();updateCloudStatusPill();showToast('Você saiu da conta.');}catch(err){showToast('Erro ao sair: '+err.message);}};
+
+  // --- Autenticação de entrada semelhante ao Nutri-Bio ---
+  const authMessage = $('#auth-message');
+  function setAuthMessage(message,kind='info') { if(!authMessage)return; authMessage.textContent=message; authMessage.className='text-sm rounded-lg p-3 '+(kind==='error'?'bg-red-50 text-red-800':kind==='success'?'bg-emerald-50 text-emerald-800':'bg-slate-50 text-slate-700'); }
+  function lockApp(){ document.body.classList.add('auth-locked'); $('#auth-gate').setAttribute('aria-hidden','false'); }
+  function unlockApp(){ document.body.classList.remove('auth-locked'); $('#auth-gate').setAttribute('aria-hidden','true'); }
+  function setAuthBusy(busy){ ['auth-login','auth-google','auth-signup','auth-forgot','auth-update-password'].forEach(id=>{const el=$('#'+id);if(el)el.disabled=busy;}); }
+  function showRecoveryForm(){ $('#auth-normal-fields').classList.add('hidden');$('#auth-recovery-fields').classList.remove('hidden');lockApp();setAuthMessage('Defina uma nova senha para sua conta.','success'); }
+  function showLoginForm(){ $('#auth-recovery-fields').classList.add('hidden');$('#auth-normal-fields').classList.remove('hidden');setAuthMessage('Informe seu e-mail e senha para entrar.'); }
+  function authClientFromGate(){ return readSupabaseForm(); }
+  $('#auth-login').onclick=async()=>{setAuthBusy(true);try{const c=authClientFromGate(),email=$('#auth-email').value.trim(),password=$('#auth-password').value;if(!email||!password)throw new Error('Informe e-mail e senha.');localStorage.setItem('med_supabase_email',email);const {data,error}=await c.auth.signInWithPassword({email,password});if(error)throw error;await applySupabaseSession(data.session,true);$('#auth-password').value='';unlockApp();setAuthMessage('Login realizado com sucesso.','success');}catch(err){lockApp();setAuthMessage(authFriendlyError(err),'error');}finally{setAuthBusy(false);}};
+  $('#auth-google').onclick=async()=>{setAuthBusy(true);try{const c=authClientFromGate(),redirectTo=location.origin+location.pathname;const {error}=await c.auth.signInWithOAuth({provider:'google',options:{redirectTo,queryParams:{prompt:'select_account'}}});if(error)throw error;}catch(err){setAuthMessage('Não foi possível iniciar o Google. Confira o provedor e a URL de retorno no Supabase. '+authFriendlyError(err),'error');setAuthBusy(false);}};
+  $('#auth-signup').onclick=async()=>{setAuthBusy(true);try{const c=authClientFromGate(),email=$('#auth-email').value.trim(),password=$('#auth-password').value;if(!email||!password)throw new Error('Informe e-mail e senha para criar a conta.');if(password.length<8)throw new Error('Use uma senha com pelo menos 8 caracteres.');const {data,error}=await c.auth.signUp({email,password,options:{emailRedirectTo:location.origin+location.pathname}});if(error)throw error;if(data.session){await applySupabaseSession(data.session,true);unlockApp();setAuthMessage('Conta criada e acesso liberado.','success');}else setAuthMessage('Cadastro iniciado. Confirme o e-mail recebido e depois entre.','success');}catch(err){setAuthMessage(authFriendlyError(err),'error');}finally{setAuthBusy(false);}};
+  $('#auth-forgot').onclick=async()=>{try{const c=authClientFromGate(),email=$('#auth-email').value.trim();if(!email)throw new Error('Digite seu e-mail antes de pedir a recuperação.');const {error}=await c.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw error;setAuthMessage('Se o e-mail estiver cadastrado, enviaremos um link de recuperação. Confira também o spam.','success');}catch(err){setAuthMessage(authFriendlyError(err),'error');}};
+  $('#auth-update-password').onclick=async()=>{try{const c=authClientFromGate(),password=$('#auth-new-password').value;if(password.length<8)throw new Error('Use uma senha com pelo menos 8 caracteres.');const {error}=await c.auth.updateUser({password});if(error)throw error;$('#auth-new-password').value='';await c.auth.signOut();showLoginForm();setAuthMessage('Senha alterada. Entre com a nova senha.','success');history.replaceState(null,document.title,location.pathname+location.search);}catch(err){setAuthMessage(authFriendlyError(err),'error');}};
+  $('#auth-back-login').onclick=showLoginForm;
+  $('#auth-password').addEventListener('keydown',e=>{if(e.key==='Enter')$('#auth-login').click();});
+  function authFriendlyError(err){const m=err&&err.message?err.message:String(err||'erro desconhecido');if(/invalid login credentials/i.test(m))return'E-mail ou senha incorretos.';if(/email not confirmed/i.test(m))return'Confirme seu e-mail antes de entrar.';if(/invalid api key/i.test(m))return'A chave pública do Supabase não foi aceita. Confira supabase-config.js.';if(/provider is not enabled|unsupported provider/i.test(m))return'O provedor Google não está habilitado no Supabase.';if(/redirect|url configuration/i.test(m))return'Este endereço não está autorizado em Supabase → Authentication → URL Configuration.';if(/failed to fetch|network|load failed/i.test(m))return'Falha de conexão. Confira internet, URL e chave pública.';return m;}
+  if(location.hash.includes('type=recovery'))showRecoveryForm();
 
   (async function initSupabaseSession(){
     if(!supabaseConfig.url||!supabaseConfig.key||!window.supabase)return;
-    try{const c=readSupabaseForm();const {data:{session}}=await c.auth.getSession();if(session)await applySupabaseSession(session,true);c.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){supabaseUser=null;cloudProvider='local';updateCloudStatusPill();}else if(event==='SIGNED_IN'&&session&&(!supabaseUser||supabaseUser.id!==session.user.id))setTimeout(()=>applySupabaseSession(session,true),0);});}catch(err){console.warn('Supabase session init:',err.message);}
+    try{const c=readSupabaseForm();const {data:{session}}=await c.auth.getSession();if(session)await applySupabaseSession(session,true);c.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){supabaseUser=null;cloudProvider='local';lockApp();updateCloudStatusPill();}else if(event==='SIGNED_IN'&&session&&(!supabaseUser||supabaseUser.id!==session.user.id))setTimeout(()=>applySupabaseSession(session,true),0);});}catch(err){console.warn('Supabase session init:',err.message);setAuthMessage(authFriendlyError(err),'error');}
   })();
 
   function loadLocalData() {
@@ -655,6 +798,7 @@
         state.medicamentos = parsed.medicamentos || [];
         state.rotinas = parsed.rotinas || [];
         state.historico = parsed.historico || [];
+        state.historicosMedicamentos = parsed.historicosMedicamentos || [];
       }
     } catch(e) {}
     updateCloudStatusPill();
@@ -682,6 +826,7 @@
           state.medicamentos = parsed.medicamentos || [];
           state.rotinas = parsed.rotinas || [];
           state.historico = parsed.historico || [];
+          state.historicosMedicamentos = parsed.historicosMedicamentos || [];
           saveCloud(); refreshAll(); showToast("Backup importado!");
         }
       } catch(err) { showToast("Arquivo inválido."); }
@@ -693,7 +838,7 @@
   $('#btn-resetar').onclick = () => {
     $('#menu-nuvem').open = false;
     customConfirm('Apagar Dados', 'Apagar todos os medicamentos e rotinas? Esta ação não tem volta.', () => {
-      state = { medicamentos: [], rotinas: [], historico: [] };
+      state = { medicamentos: [], rotinas: [], historico: [], historicosMedicamentos: [] };
       saveCloud(); refreshAll(); showToast("Todos os dados apagados.");
     });
   };
@@ -1042,6 +1187,7 @@
       elCheckbox.closest('.med-card').classList.remove('opacity-60', 'bg-emerald-50');
     }
     saveCloud(); // Auto save
+    renderHistoricoRotinas();
   };
 
   function renderDayList(containerId, dataStr, showCheckbox = true) {
@@ -1117,10 +1263,52 @@
     grid.innerHTML = gridHTML;
   }
 
+
+  // --- Consulta do histórico de tomadas das rotinas ---
+  function getRoutineHistoryRows() {
+    const q = ($('#rot-hist-medicamento').value || '').trim().toLocaleLowerCase('pt-BR');
+    const from = $('#rot-hist-de').value, to = $('#rot-hist-ate').value;
+    return (state.historico || []).map(h => {
+      const rotina = state.rotinas.find(r => r.id === h.rotinaId) || null;
+      const med = rotina ? state.medicamentos.find(m => m.id === rotina.medId) : null;
+      return {...h, rotina, med, nome: med ? med.nome : 'Medicamento/rotina removida', dosagem: med ? med.dosagem : '', horarioRotina: rotina ? rotina.horario : ''};
+    }).filter(h => (!q || [h.nome,h.dosagem,h.horarioRotina].join(' ').toLocaleLowerCase('pt-BR').includes(q)) && (!from || h.data >= from) && (!to || h.data <= to))
+      .sort((a,b) => (b.data || '').localeCompare(a.data || '') || (b.horaTomado || '').localeCompare(a.horaTomado || ''));
+  }
+  function renderHistoricoRotinas() {
+    const tbody = $('#rot-hist-body'); if (!tbody) return;
+    const rows = getRoutineHistoryRows();
+    $('#rot-hist-resultados').textContent = `${rows.length} tomada(s) encontrada(s) de ${(state.historico || []).length} registro(s).`;
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="p-5 text-center text-slate-500">Nenhum medicamento tomado encontrado para os filtros selecionados.</td></tr>'; return; }
+    tbody.innerHTML = rows.map(h => `<tr class="hover:bg-emerald-50"><td class="p-3">${formatDataBR(h.data || '')}</td><td class="p-3 font-semibold">${esc((h.horaTomado || '').slice(0,5) || '—')}</td><td class="p-3 font-semibold text-emerald-800">${esc(h.nome)}</td><td class="p-3">${esc(h.dosagem || '—')}</td><td class="p-3">${esc(h.horarioRotina || '—')}</td></tr>`).join('');
+  }
+  ['rot-hist-medicamento','rot-hist-de','rot-hist-ate'].forEach(id => $('#'+id).addEventListener('input', renderHistoricoRotinas));
+  $('#btn-rot-hist-limpar').onclick = () => { ['rot-hist-medicamento','rot-hist-de','rot-hist-ate'].forEach(id => $('#'+id).value=''); renderHistoricoRotinas(); };
+  $('#btn-rot-hist-exportar').onclick = () => {
+    const rows = getRoutineHistoryRows();
+    const quote = v => '"' + String(v ?? '').replace(/"/g,'""') + '"';
+    const csv = '\ufeff' + [['Data','Hora tomada','Medicamento','Dosagem','Horário da rotina'], ...rows.map(h => [h.data, (h.horaTomado||'').slice(0,5), h.nome, h.dosagem, h.horarioRotina])].map(r => r.map(quote).join(';')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); const a = document.createElement('a'); a.href=url; a.download='historico_rotinas_medicamentos.csv'; a.click(); URL.revokeObjectURL(url);
+  };
+
+  // --- Histórico de medicamentos receitados/tomados eventualmente ---
+  const histModal=$('#modal-historico');
+  function resetHistoricoForm(){ $('#hist-id').value='';$('#hist-med-nome').value='';$('#hist-med-dose').value='';$('#hist-data').value=getHojeStr();$('#hist-dias').value='';$('#hist-paciente').value='';$('#hist-medico-nome').value='';$('#hist-hospital-nome').value='';$('#hist-tipo').value='receitado';$('#hist-posologia').value='';$('#hist-observacoes').value='';$('#hist-receita-arquivo').value='';$('#hist-ia-status').textContent='A IA tenta extrair os campos da receita; confira e corrija tudo antes de salvar.'; }
+  $('#btn-novo-historico').onclick=()=>{resetHistoricoForm();$('#modal-historico-title').textContent='Novo histórico de medicamento';histModal.showModal();};
+  $('#modal-historico-close').onclick=()=>histModal.close();$('#modal-historico-cancel').onclick=()=>histModal.close();
+  $('#form-historico').onsubmit=e=>{e.preventDefault();const id=$('#hist-id').value;const row={id:id||('mh_'+Date.now()),medicamento:$('#hist-med-nome').value.trim(),dosagem:$('#hist-med-dose').value.trim(),data:$('#hist-data').value,dias:$('#hist-dias').value?Number($('#hist-dias').value):null,paciente:$('#hist-paciente').value.trim(),medico:$('#hist-medico-nome').value.trim(),hospital:$('#hist-hospital-nome').value.trim(),tipo:$('#hist-tipo').value,posologia:$('#hist-posologia').value.trim(),observacoes:$('#hist-observacoes').value.trim(),updatedAt:new Date().toISOString()};if(id){const i=state.historicosMedicamentos.findIndex(x=>x.id===id);if(i>=0)state.historicosMedicamentos[i]=row;}else state.historicosMedicamentos.push(row);saveCloud();renderHistoricosMedicamentos();histModal.close();showToast('Histórico salvo.');};
+  window.editarHistoricoMedicamento=id=>{const h=state.historicosMedicamentos.find(x=>x.id===id);if(!h)return;resetHistoricoForm();$('#modal-historico-title').textContent='Editar histórico';$('#hist-id').value=h.id;$('#hist-med-nome').value=h.medicamento||'';$('#hist-med-dose').value=h.dosagem||'';$('#hist-data').value=h.data||getHojeStr();$('#hist-dias').value=h.dias||'';$('#hist-paciente').value=h.paciente||'';$('#hist-medico-nome').value=h.medico||'';$('#hist-hospital-nome').value=h.hospital||'';$('#hist-tipo').value=h.tipo||'receitado';$('#hist-posologia').value=h.posologia||'';$('#hist-observacoes').value=h.observacoes||'';histModal.showModal();};
+  window.excluirHistoricoMedicamento=id=>customConfirm('Excluir registro','Deseja excluir este registro do histórico?',()=>{state.historicosMedicamentos=state.historicosMedicamentos.filter(x=>x.id!==id);saveCloud();renderHistoricosMedicamentos();});
+  function renderHistoricosMedicamentos(){const list=$('#historico-lista');if(!list)return;const val=id=>($('#'+id).value||'').trim().toLocaleLowerCase('pt-BR');const q=val('hist-busca'),p=val('hist-pessoa'),med=val('hist-medico'),hos=val('hist-hospital'),drug=val('hist-medicamento'),type=$('#hist-tipo-filtro').value,from=$('#hist-data-de').value,to=$('#hist-data-ate').value;const rows=(state.historicosMedicamentos||[]).filter(h=>{const all=[h.medicamento,h.dosagem,h.paciente,h.medico,h.hospital,h.tipo,h.posologia,h.observacoes,h.data,h.dias].join(' ').toLocaleLowerCase('pt-BR');return(!q||all.includes(q))&&(!p||(h.paciente||'').toLocaleLowerCase('pt-BR').includes(p))&&(!med||(h.medico||'').toLocaleLowerCase('pt-BR').includes(med))&&(!hos||(h.hospital||'').toLocaleLowerCase('pt-BR').includes(hos))&&(!drug||(h.medicamento||'').toLocaleLowerCase('pt-BR').includes(drug))&&(!type||h.tipo===type)&&(!from||h.data>=from)&&(!to||h.data<=to);}).sort((a,b)=>(b.data||'').localeCompare(a.data||''));$('#hist-resultados').textContent=`${rows.length} registro(s) encontrado(s) de ${(state.historicosMedicamentos||[]).length}.`;if(!rows.length){list.innerHTML='<div class="p-6 text-center text-slate-500 bg-white rounded-xl border border-slate-200">Nenhum registro encontrado. Ajuste os filtros ou cadastre um histórico.</div>';return;}list.innerHTML=rows.map(h=>`<article class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"><div class="flex flex-wrap justify-between gap-2"><div><h3 class="font-bold text-violet-900">${esc(h.medicamento||'Medicamento não informado')} <span class="text-xs font-semibold rounded-full px-2 py-1 ${h.tipo==='tomado'?'bg-emerald-100 text-emerald-800':'bg-blue-100 text-blue-800'}">${h.tipo==='tomado'?'Tomado eventualmente':'Receitado'}</span></h3><p class="text-sm text-slate-600 mt-1">${esc(h.dosagem||'Dose não informada')} · ${formatDataBR(h.data||'')} · ${h.dias?esc(h.dias)+' dia(s)':'duração não informada'}</p></div><div class="flex gap-2"><button class="text-xs px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700" onclick="window.editarHistoricoMedicamento('${h.id}')">Editar</button><button class="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-700" onclick="window.excluirHistoricoMedicamento('${h.id}')">Excluir</button></div></div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm"><p><span class="font-semibold">Quem tomou:</span> ${esc(h.paciente||'—')}</p><p><span class="font-semibold">Médico:</span> ${esc(h.medico||'—')}</p><p><span class="font-semibold">Hospital:</span> ${esc(h.hospital||'—')}</p><p><span class="font-semibold">Posologia:</span> ${esc(h.posologia||'—')}</p>${h.observacoes?`<p class="sm:col-span-2"><span class="font-semibold">Observações:</span> ${esc(h.observacoes)}</p>`:''}</div></article>`).join('');}
+  ['hist-busca','hist-data-de','hist-data-ate','hist-pessoa','hist-medico','hist-hospital','hist-medicamento','hist-tipo-filtro'].forEach(id=>$('#'+id).addEventListener('input',renderHistoricosMedicamentos));
+  $('#btn-limpar-filtros-hist').onclick=()=>{['hist-busca','hist-data-de','hist-data-ate','hist-pessoa','hist-medico','hist-hospital','hist-medicamento','hist-tipo-filtro'].forEach(id=>$('#'+id).value='');renderHistoricosMedicamentos();};
+  $('#btn-ler-receita-ia').onclick=async()=>{const file=$('#hist-receita-arquivo').files[0];if(!file){$('#hist-ia-status').textContent='Selecione uma foto ou imagem da receita primeiro.';return;}if(!supabaseClient||!supabaseUser){$('#hist-ia-status').textContent='Entre na sua conta para usar a leitura por IA.';return;}if(file.size>8*1024*1024){$('#hist-ia-status').textContent='A imagem deve ter até 8 MB.';return;}$('#btn-ler-receita-ia').disabled=true;$('#hist-ia-status').textContent='Analisando a receita…';try{const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Não foi possível ler a imagem.'));r.readAsDataURL(file);});const [prefix,b64]=String(dataUrl).split(',');const mime=(prefix.match(/data:(.*?);base64/)||[])[1]||file.type||'image/jpeg';const {data,error}=await supabaseClient.functions.invoke('parse-prescription',{body:{imageBase64:b64,mimeType:mime}});if(error)throw error;const x=data&&data.result?data.result:data;if(x.medicamento)$('#hist-med-nome').value=x.medicamento;if(x.dosagem)$('#hist-med-dose').value=x.dosagem;if(x.data)$('#hist-data').value=x.data;if(x.dias)$('#hist-dias').value=x.dias;if(x.paciente)$('#hist-paciente').value=x.paciente;if(x.medico)$('#hist-medico-nome').value=x.medico;if(x.hospital)$('#hist-hospital-nome').value=x.hospital;if(x.posologia)$('#hist-posologia').value=x.posologia;if(x.observacoes)$('#hist-observacoes').value=x.observacoes;$('#hist-tipo').value='receitado';$('#hist-ia-status').textContent='Leitura concluída. Revise todos os campos preenchidos e corrija qualquer erro antes de salvar.';}catch(err){console.error(err);$('#hist-ia-status').textContent='Não foi possível ler a receita: '+(err.message||String(err))+'. Confira se a Edge Function parse-prescription está implantada e a chave GEMINI_API_KEY configurada.';}finally{$('#btn-ler-receita-ia').disabled=false;}};
+
   const tabs = {
     'btn-tab-inicio': 'view-inicio',
     'btn-tab-meds': 'view-meds',
     'btn-tab-rotinas': 'view-rotinas',
+    'btn-tab-historico': 'view-historico',
     'btn-tab-config': 'view-config'
   };
 
@@ -1139,17 +1327,21 @@
       if (btnId === 'btn-tab-inicio') refreshDashboard();
       if (btnId === 'btn-tab-meds') renderMeds();
       if (btnId === 'btn-tab-rotinas') renderRotinas();
+      if (btnId === 'btn-tab-historico') { renderHistoricoRotinas(); renderHistoricosMedicamentos(); }
     };
   });
 
   function refreshAll() {
     renderMeds();
     renderRotinas();
+    renderHistoricosMedicamentos();
+    renderHistoricoRotinas();
     refreshDashboard();
   }
 
   // Init
   loadLocalData();
+  updateCloudStatusPill();
   refreshAll();
   startMedicationNotificationChecks();
 

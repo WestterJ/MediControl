@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "MediControl - Controle de Medicamentos",
+  "name": "MediControl — Medicamentos e Histórico",
   "short_name": "MediControl",
-  "description": "Controle de medicamentos, rotinas e lembretes.",
+  "description": "Controle de medicamentos, rotinas, histórico e leitura assistida de receitas.",
   "lang": "pt-BR",
   "start_url": "./index.html",
   "scope": "./",
