@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f766e">
-<meta name="description" content="MediControl v2.1.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
+<meta name="description" content="MediControl v2.2.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>MediControl v2.1.0 — Medicamentos & Rotinas</title>
+<title>MediControl v2.2.0 — Medicamentos & Rotinas</title>
 <script src="./supabase-config.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -91,7 +91,7 @@
       <div class="bg-white text-teal-700 p-2 rounded-xl font-bold text-xl shadow-inner">💊</div>
       <div>
         <h1 class="text-lg md:text-xl font-bold tracking-tight">MediControl</h1>
-        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas · v2.1.0</small>
+        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas · v2.2.0</small>
       </div>
     </div>
     
@@ -426,7 +426,7 @@
   <div class="bg-violet-700 text-white px-6 py-4 flex justify-between items-center"><h3 id="modal-historico-title" class="font-bold text-lg">Novo histórico de medicamento</h3><button id="modal-historico-close" type="button" class="text-white font-bold text-xl">×</button></div>
   <form id="form-historico" class="p-5 md:p-6 space-y-4 max-h-[82vh] overflow-y-auto">
     <input type="hidden" id="hist-id">
-    <div class="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2"><label class="block text-sm font-semibold text-violet-900">Ler receita com IA (imagem ou foto)<input id="hist-receita-arquivo" type="file" accept="image/*" capture="environment" class="mt-2 block w-full text-sm text-slate-700"></label><button id="btn-ler-receita-ia" type="button" class="px-4 py-2 bg-violet-700 hover:bg-violet-800 text-white rounded-lg text-sm font-semibold">✨ Ler receita por IA e preencher</button><p id="hist-ia-status" class="text-xs text-slate-600">A IA tenta extrair os campos da receita; confira e corrija tudo antes de salvar.</p></div>
+    <div class="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2"><label class="block text-sm font-semibold text-violet-900">Ler receita com IA (imagem ou foto)<input id="hist-receita-arquivo" type="file" accept="image/*" class="mt-2 block w-full text-sm text-slate-700"></label><button id="btn-ler-receita-ia" type="button" class="px-4 py-2 bg-violet-700 hover:bg-violet-800 text-white rounded-lg text-sm font-semibold">✨ Ler receita por IA e preencher</button><p id="hist-ia-status" class="text-xs text-slate-600">A IA tenta extrair os campos da receita; confira e corrija tudo antes de salvar.</p></div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <label class="text-sm font-semibold text-slate-700">Medicamento<input id="hist-med-nome" required class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Nome do medicamento"></label>
       <label class="text-sm font-semibold text-slate-700">Dosagem / apresentação<input id="hist-med-dose" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Ex.: 500 mg, comprimido"></label>
@@ -749,11 +749,26 @@
       const remote=await supabaseReadRemote();
       if(remote && remote.data) {
         if(remote.updated_at) setCloudSavedAt(remote.updated_at);
-        if(initial) {
-          tempCloudDataToDownload=remote.data;
-          $('#sync-recommendation-box').innerHTML='Encontramos dados na conta Supabase. <strong>Baixar da Nuvem</strong> substitui os dados deste aparelho; <strong>Enviar Dados Atuais</strong> substitui os dados remotos.';
-          $('#modal-sync-conflict').showModal();
-        } else { state={medicamentos:remote.data.medicamentos||[],rotinas:remote.data.rotinas||[],historico:remote.data.historico||[],historicosMedicamentos:remote.data.historicosMedicamentos||[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); refreshAll(); showToast('Dados carregados do Supabase.'); }
+        // Sincronização sem janela de conflito: combina registros locais e remotos por ID,
+        // preservando itens exclusivos de cada lado; em IDs repetidos, a versão remota prevalece.
+        const localState = state || {};
+        const remoteState = remote.data || {};
+        const mergeList = (localList, remoteList) => {
+          const byId = new Map();
+          (Array.isArray(localList) ? localList : []).forEach((item, i) => byId.set(item && item.id != null ? String(item.id) : `local-${i}-${JSON.stringify(item)}`, item));
+          (Array.isArray(remoteList) ? remoteList : []).forEach((item, i) => byId.set(item && item.id != null ? String(item.id) : `remote-${i}-${JSON.stringify(item)}`, item));
+          return Array.from(byId.values());
+        };
+        state = {
+          medicamentos: mergeList(localState.medicamentos, remoteState.medicamentos),
+          rotinas: mergeList(localState.rotinas, remoteState.rotinas),
+          historico: mergeList(localState.historico, remoteState.historico),
+          historicosMedicamentos: mergeList(localState.historicosMedicamentos, remoteState.historicosMedicamentos)
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        refreshAll();
+        await syncSupabaseNow(false);
+        if(initial) showToast('Dados sincronizados automaticamente com a nuvem.');
       } else { await syncSupabaseNow(true); }
     } catch(err) { showToast('Login realizado, mas não foi possível ler os dados: '+(err.message||'verifique a tabela/RLS')); }
   }
