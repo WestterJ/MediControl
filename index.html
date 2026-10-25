@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f766e">
-<meta name="description" content="MediControl v2.3.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
+<meta name="description" content="MediControl v2.4.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>MediControl v2.3.0 — Medicamentos & Rotinas</title>
+<title>MediControl v2.4.0 — Medicamentos & Rotinas</title>
 <script src="./supabase-config.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
   body.auth-locked > header, body.auth-locked > main { display:none !important; }
   #auth-gate { display:none; }
@@ -91,7 +91,7 @@
       <div class="bg-white text-teal-700 p-2 rounded-xl font-bold text-xl shadow-inner">💊</div>
       <div>
         <h1 class="text-lg md:text-xl font-bold tracking-tight">MediControl</h1>
-        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas · v2.3.0</small>
+        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas · v2.4.0</small>
       </div>
     </div>
     
@@ -283,6 +283,7 @@
         <button type="button" id="btn-test-notification" class="px-4 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold">Enviar notificação de teste</button>
       </div>
       <p id="notification-status" class="text-sm font-medium text-slate-700">Verificando suporte do navegador...</p>
+      <p class="text-xs text-slate-500 mt-1">Os avisos aparecem enquanto o app estiver aberto ou em segundo plano. O navegador pode suspender o app e atrasar ou impedir o lembrete; para doses importantes, use também um alarme do celular.</p>
       <p class="text-xs text-slate-500">Importante: para alertar no horário, mantenha o MediControl aberto ou minimizado. Se o navegador/app for fechado, o celular reiniciado ou o sistema suspender a página, o aviso pode não ser entregue. Notificação garantida com o app fechado exige uma versão PWA com serviço de notificações push.</p>
     </div>
     <div class="bg-teal-50 border border-teal-200 rounded-2xl p-5 text-sm text-teal-900">
@@ -454,7 +455,11 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c] || c));
   
   // Utilidades de Data
-  const getHojeStr = () => new Date().toISOString().split('T')[0];
+  const dataLocalStr = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const getHojeStr = () => dataLocalStr(new Date());
+  const novoId = p => p + '_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID().slice(0, 13) : Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+  // Exclusões viram "marcas de remoção" para não ressuscitarem ao sincronizar com outro aparelho.
+  function marcarRemovido(...ids) { state.removidos = state.removidos || {}; const t = new Date().toISOString(); ids.forEach(id => { if (id != null) state.removidos[String(id)] = t; }); }
   const formatDataBR = dataStr => {
     if (!dataStr) return '';
     const [y, m, d] = dataStr.split('-');
@@ -507,8 +512,8 @@
   };
 
   const STORAGE_KEY = 'med_control_cloud_api_v1';
-  let cloudProvider = localStorage.getItem('med_cloud_provider') || 'local';
-  let cloudToken = localStorage.getItem('med_cloud_token') || '';
+  let cloudProvider = localStorage.getItem('med_cloud_provider') === 'supabase' ? 'supabase' : 'local';
+  let cloudToken = ''; localStorage.removeItem('med_cloud_token'); // token manual de Drive/OneDrive foi removido por segurança
   let tempCloudDataToDownload = null;
 
   const LAST_CLOUD_SAVE_KEY = 'med_last_cloud_saved_at_v1';
@@ -557,61 +562,7 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       
       if (cloudProvider === 'supabase' && supabaseClient && supabaseUser) {
-        if (supabaseSaveInFlight) return;
-        supabaseSaveInFlight = true;
-        try {
-          const { error } = await supabaseClient.from('medication_data').upsert({user_id:supabaseUser.id, data:state, updated_at:new Date().toISOString()}, {onConflict:'user_id'});
-          if (error) throw error;
-          setCloudSavedAt(new Date().toISOString());
-          showToast('Dados sincronizados com a nuvem.');
-        } finally { supabaseSaveInFlight = false; }
-      } else if (cloudProvider !== 'local' && cloudToken) {
-        showToast("Sincronizando com /apps/dados/...", true);
-        const fileName = "controle_medicamentos_dados.json";
-        // Limpar histórico antigo (opcional, mantendo leve) - manter últimos 60 dias
-        const hojeObj = new Date();
-        hojeObj.setDate(hojeObj.getDate() - 60);
-        const cutoff = hojeObj.toISOString().split('T')[0];
-        const stateToSave = {
-          ...state,
-          historico: state.historico.filter(h => h.data >= cutoff)
-        };
-
-        const fileContent = JSON.stringify(stateToSave, null, 2);
-
-        if (cloudProvider === 'google') {
-          const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and trashed=false`, {
-            headers: { 'Authorization': `Bearer ${cloudToken}` }
-          });
-          const searchJson = await searchRes.json();
-          let fileId = searchJson.files?.[0]?.id;
-
-          if (fileId) {
-            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-              method: 'PATCH',
-              headers: { 'Authorization': `Bearer ${cloudToken}`, 'Content-Type': 'application/json' },
-              body: fileContent
-            });
-          } else {
-            const metadata = { name: fileName, mimeType: 'application/json' };
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-            form.append('file', new Blob([fileContent], { type: 'application/json' }));
-            
-            await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${cloudToken}` },
-              body: form
-            });
-          }
-        } else if (cloudProvider === 'onedrive') {
-          await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/apps/dados/${fileName}:/content`, {
-            method: 'PUT',
-            headers: { 'Authorization': `Bearer ${cloudToken}`, 'Content-Type': 'application/json' },
-            body: fileContent
-          });
-        }
-        showToast("Sincronizado na Nuvem!");
+        await syncSupabaseNow(false);
       }
     } catch(e) {
       console.error("Erro na nuvem:", e);
@@ -653,6 +604,7 @@
   }
 
   async function connectCloudWithToken(provider, token) {
+    showToast('A conexão por token foi removida. Use a conta Supabase.'); return;
     if (!token) { showToast("Insira o Token OAuth."); return; }
     cloudProvider = provider;
     cloudToken = token.trim();
@@ -724,15 +676,55 @@
     if (error) throw error; return data || null;
   }
 
+  let supabaseLastUpdatedAt = null, supabaseSavePending = false;
+
+  // Combina dois estados por ID: vence o item com updatedAt mais recente (empate: o remoto); remoções valem para os dois lados.
+  function mergeStates(a, b) {
+    a = a || {}; b = b || {};
+    const rem = { ...(b.removidos || {}), ...(a.removidos || {}) };
+    const corte = Date.now() - 90 * 864e5;
+    Object.keys(rem).forEach(k => { if (Date.parse(rem[k]) < corte) delete rem[k]; });
+    const lista = (x, y) => {
+      const m = new Map();
+      [x, y].forEach((arr, lado) => (Array.isArray(arr) ? arr : []).forEach((item, i) => {
+        if (!item) return;
+        const k = item.id != null ? String(item.id) : `s${lado}-${i}-${JSON.stringify(item)}`;
+        const antigo = m.get(k);
+        if (!antigo || String(item.updatedAt || '') >= String(antigo.updatedAt || '')) m.set(k, item);
+      }));
+      return [...m.values()].filter(it => it.id == null || !rem[String(it.id)]);
+    };
+    return { medicamentos: lista(a.medicamentos, b.medicamentos), rotinas: lista(a.rotinas, b.rotinas), historico: lista(a.historico, b.historico), historicosMedicamentos: lista(a.historicosMedicamentos, b.historicosMedicamentos), removidos: rem };
+  }
+
+  // Grava só se a nuvem ainda está na versão que lemos; se outro aparelho gravou antes, mescla e tenta de novo.
+  async function gravarRemoto() {
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      const agora = new Date().toISOString();
+      if (supabaseLastUpdatedAt) {
+        const r = await supabaseClient.from('medication_data').update({data:state, updated_at:agora}).eq('user_id',supabaseUser.id).eq('updated_at',supabaseLastUpdatedAt).select('updated_at');
+        if (r.error) throw r.error;
+        if (r.data && r.data.length) { supabaseLastUpdatedAt = r.data[0].updated_at; setCloudSavedAt(agora); return; }
+        const remoto = await supabaseReadRemote();
+        if (remoto && remoto.data) { state = mergeStates(state, remoto.data); supabaseLastUpdatedAt = remoto.updated_at; localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); refreshAll(); }
+        else supabaseLastUpdatedAt = null;
+      } else {
+        const r = await supabaseClient.from('medication_data').upsert({user_id:supabaseUser.id, data:state, updated_at:agora},{onConflict:'user_id'}).select('updated_at');
+        if (r.error) throw r.error;
+        supabaseLastUpdatedAt = r.data && r.data[0] ? r.data[0].updated_at : agora; setCloudSavedAt(agora); return;
+      }
+    }
+    throw new Error('Conflito de sincronização repetido. Tente novamente.');
+  }
+
   async function syncSupabaseNow(showMessage=true) {
     if (!supabaseClient || !supabaseUser) { if(showMessage) showToast('Entre na sua conta para sincronizar com a nuvem.'); return; }
-    if (supabaseSaveInFlight) return;
+    if (supabaseSaveInFlight) { supabaseSavePending = true; return; } // não descarta: reenvia ao terminar
     supabaseSaveInFlight = true;
     try {
       if(showMessage) showToast('Sincronizando com a nuvem...',true);
-      const {error} = await supabaseClient.from('medication_data').upsert({user_id:supabaseUser.id,data:state,updated_at:new Date().toISOString()},{onConflict:'user_id'});
-      if(error) throw error;
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudProvider='supabase'; localStorage.setItem('med_cloud_provider','supabase'); setCloudSavedAt(new Date().toISOString()); updateCloudStatusPill();
+      do { supabaseSavePending = false; await gravarRemoto(); } while (supabaseSavePending);
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudProvider='supabase'; localStorage.setItem('med_cloud_provider','supabase'); updateCloudStatusPill();
       if(showMessage) showToast('Dados sincronizados com a nuvem.');
     } catch(err) { console.error('Supabase sync error:',err); showToast('Falha na sincronização: '+(err.message || 'verifique URL, chave, tabela e RLS')+'. Os dados permanecem neste aparelho.'); }
     finally { supabaseSaveInFlight=false; }
@@ -749,22 +741,8 @@
       const remote=await supabaseReadRemote();
       if(remote && remote.data) {
         if(remote.updated_at) setCloudSavedAt(remote.updated_at);
-        // Sincronização sem janela de conflito: combina registros locais e remotos por ID,
-        // preservando itens exclusivos de cada lado; em IDs repetidos, a versão remota prevalece.
-        const localState = state || {};
-        const remoteState = remote.data || {};
-        const mergeList = (localList, remoteList) => {
-          const byId = new Map();
-          (Array.isArray(localList) ? localList : []).forEach((item, i) => byId.set(item && item.id != null ? String(item.id) : `local-${i}-${JSON.stringify(item)}`, item));
-          (Array.isArray(remoteList) ? remoteList : []).forEach((item, i) => byId.set(item && item.id != null ? String(item.id) : `remote-${i}-${JSON.stringify(item)}`, item));
-          return Array.from(byId.values());
-        };
-        state = {
-          medicamentos: mergeList(localState.medicamentos, remoteState.medicamentos),
-          rotinas: mergeList(localState.rotinas, remoteState.rotinas),
-          historico: mergeList(localState.historico, remoteState.historico),
-          historicosMedicamentos: mergeList(localState.historicosMedicamentos, remoteState.historicosMedicamentos)
-        };
+        state = mergeStates(state, remote.data);
+        supabaseLastUpdatedAt = remote.updated_at || null;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         refreshAll();
         await syncSupabaseNow(false);
@@ -882,7 +860,7 @@
       return;
     }
     customConfirm("Excluir", "Remover este medicamento?", () => {
-      state.medicamentos = state.medicamentos.filter(x => x.id !== id);
+      marcarRemovido(id); state.medicamentos = state.medicamentos.filter(x => x.id !== id);
       saveCloud(); renderMeds();
     });
   };
@@ -893,7 +871,8 @@
     e.preventDefault();
     const id = $('#med-id').value;
     const payload = {
-      id: id || ('m_' + Date.now()),
+      updatedAt: new Date().toISOString(),
+      id: id || novoId('m'),
       nome: $('#med-nome').value.trim(),
       dosagem: $('#med-dosagem').value.trim(),
       obs: $('#med-obs').value.trim()
@@ -965,7 +944,7 @@
 
   window.excluirRotina = id => {
     customConfirm("Excluir Rotina", "Parar de ser lembrado desta rotina?", () => {
-      state.rotinas = state.rotinas.filter(x => x.id !== id);
+      marcarRemovido(id); state.rotinas = state.rotinas.filter(x => x.id !== id);
       saveCloud(); renderRotinas(); refreshDashboard();
     });
   };
@@ -977,7 +956,8 @@
     if(!$('#rotina-medId').value) return;
     const id = $('#rotina-id').value;
     const payload = {
-      id: id || ('r_' + Date.now()),
+      updatedAt: new Date().toISOString(),
+      id: id || novoId('r'),
       medId: $('#rotina-medId').value,
       horario: $('#rotina-horario').value,
       dataInicio: $('#rotina-dataInicio').value,
@@ -1111,12 +1091,10 @@
 
   function sendMedicationNotification(title, body, tag) {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    try {
-      const n = new Notification(title, { body, tag, icon: 'https://cdn-icons-png.flaticon.com/512/822/822143.png', vibrate: [200, 100, 200], renotify: false });
-      n.onclick = () => { window.focus(); n.close(); };
-    } catch (err) {
-      console.warn('Falha ao exibir notificação:', err);
-    }
+    const opcoes = { body, tag, icon: './icons/icon-192.png', badge: './icons/icon-192.png', vibrate: [200, 100, 200], renotify: false, requireInteraction: true };
+    // No Android o Chrome só aceita notificações pelo service worker (new Notification() costuma falhar).
+    const viaPagina = () => { try { const n = new Notification(title, opcoes); n.onclick = () => { window.focus(); n.close(); }; } catch (err) { console.warn('Falha ao exibir notificação:', err); } };
+    if ('serviceWorker' in navigator) navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opcoes)).catch(viaPagina); else viaPagina();
   }
 
   function checkMedicationNotifications() {
@@ -1194,10 +1172,11 @@
     if (isChecked) {
       // Registrar no histórico
       const horaStr = new Date().toTimeString().split(' ')[0];
-      state.historico.push({ id: 'h_'+Date.now(), rotinaId, data: dataStr, horaTomado: horaStr });
+      state.historico.push({ id: novoId('h'), rotinaId, data: dataStr, horaTomado: horaStr });
       elCheckbox.closest('.med-card').classList.add('opacity-60', 'bg-emerald-50');
     } else {
       // Remover do histórico
+      marcarRemovido(...state.historico.filter(h => h.rotinaId === rotinaId && h.data === dataStr).map(h => h.id));
       state.historico = state.historico.filter(h => !(h.rotinaId === rotinaId && h.data === dataStr));
       elCheckbox.closest('.med-card').classList.remove('opacity-60', 'bg-emerald-50');
     }
@@ -1240,8 +1219,8 @@
     const amanhaObj = new Date(hojeObj);
     amanhaObj.setDate(amanhaObj.getDate() + 1);
 
-    const hojeStr = hojeObj.toISOString().split('T')[0];
-    const amanhaStr = amanhaObj.toISOString().split('T')[0];
+    const hojeStr = dataLocalStr(hojeObj);
+    const amanhaStr = dataLocalStr(amanhaObj);
 
     $('#data-hoje').textContent = formatDataBR(hojeStr);
     $('#data-amanha').textContent = formatDataBR(amanhaStr);
@@ -1257,7 +1236,7 @@
     for(let i=0; i<7; i++) {
       const d = new Date(hojeObj);
       d.setDate(d.getDate() + i);
-      const dStr = d.toISOString().split('T')[0];
+      const dStr = dataLocalStr(d);
       const diaTxt = i===0 ? 'Hoje' : i===1 ? 'Amanhã' : diasNomes[d.getDay()];
       
       const medsDay = getMedicamentosDoDia(dStr);
@@ -1312,9 +1291,9 @@
   function resetHistoricoForm(){ receitaMedicamentosIA=[];$('#hist-ia-medicamentos').innerHTML='';$('#hist-ia-medicamentos').classList.add('hidden');$('#hist-id').value='';$('#hist-med-nome').value='';$('#hist-med-dose').value='';$('#hist-data').value=getHojeStr();$('#hist-dias').value='';$('#hist-paciente').value='';$('#hist-medico-nome').value='';$('#hist-hospital-nome').value='';$('#hist-tipo').value='receitado';$('#hist-posologia').value='';$('#hist-observacoes').value='';$('#hist-receita-arquivo').value='';$('#hist-ia-status').textContent='A IA tenta extrair os campos da receita; confira e corrija tudo antes de salvar.'; }
   $('#btn-novo-historico').onclick=()=>{resetHistoricoForm();$('#modal-historico-title').textContent='Novo histórico de medicamento';histModal.showModal();};
   $('#modal-historico-close').onclick=()=>histModal.close();$('#modal-historico-cancel').onclick=()=>histModal.close();
-  $('#form-historico').onsubmit=e=>{e.preventDefault();const id=$('#hist-id').value;const base={data:$('#hist-data').value,dias:$('#hist-dias').value?Number($('#hist-dias').value):null,paciente:$('#hist-paciente').value.trim(),medico:$('#hist-medico-nome').value.trim(),hospital:$('#hist-hospital-nome').value.trim(),tipo:$('#hist-tipo').value,observacoes:$('#hist-observacoes').value.trim(),updatedAt:new Date().toISOString()};let meds=[];if(!id&&receitaMedicamentosIA.length){meds=[...document.querySelectorAll('[data-ia-med-index]')].map(el=>{const i=Number(el.dataset.iaMedIndex);return {medicamento:el.querySelector('[data-field="nome"]').value.trim(),dosagem:el.querySelector('[data-field="dose"]').value.trim(),posologia:el.querySelector('[data-field="posologia"]').value.trim()};}).filter(m=>m.medicamento);}else meds=[{medicamento:$('#hist-med-nome').value.trim(),dosagem:$('#hist-med-dose').value.trim(),posologia:$('#hist-posologia').value.trim()}];if(!meds.length){showToast('Informe ao menos um medicamento.');return;}if(id){const row={...base,...meds[0],id,updatedAt:new Date().toISOString()};const i=state.historicosMedicamentos.findIndex(x=>x.id===id);if(i>=0)state.historicosMedicamentos[i]=row;}else{meds.forEach((m,i)=>state.historicosMedicamentos.push({...base,...m,id:'mh_'+Date.now()+'_'+i,receitaGrupo:receitaMedicamentosIA.length?'rec_'+Date.now():undefined}));}saveCloud();renderHistoricosMedicamentos();histModal.close();showToast(meds.length>1?`${meds.length} medicamentos salvos no histórico.`:'Histórico salvo.');};
+  $('#form-historico').onsubmit=e=>{e.preventDefault();const id=$('#hist-id').value;const base={data:$('#hist-data').value,dias:$('#hist-dias').value?Number($('#hist-dias').value):null,paciente:$('#hist-paciente').value.trim(),medico:$('#hist-medico-nome').value.trim(),hospital:$('#hist-hospital-nome').value.trim(),tipo:$('#hist-tipo').value,observacoes:$('#hist-observacoes').value.trim(),updatedAt:new Date().toISOString()};let meds=[];if(!id&&receitaMedicamentosIA.length){meds=[...document.querySelectorAll('[data-ia-med-index]')].map(el=>{const i=Number(el.dataset.iaMedIndex);return {medicamento:el.querySelector('[data-field="nome"]').value.trim(),dosagem:el.querySelector('[data-field="dose"]').value.trim(),posologia:el.querySelector('[data-field="posologia"]').value.trim()};}).filter(m=>m.medicamento);}else meds=[{medicamento:$('#hist-med-nome').value.trim(),dosagem:$('#hist-med-dose').value.trim(),posologia:$('#hist-posologia').value.trim()}];if(!meds.length){showToast('Informe ao menos um medicamento.');return;}if(id){const row={...base,...meds[0],id,updatedAt:new Date().toISOString()};const i=state.historicosMedicamentos.findIndex(x=>x.id===id);if(i>=0)state.historicosMedicamentos[i]=row;}else{meds.forEach((m,i)=>state.historicosMedicamentos.push({...base,...m,id:novoId('mh')+'_'+i,receitaGrupo:receitaMedicamentosIA.length?novoId('rec'):undefined}));}saveCloud();renderHistoricosMedicamentos();histModal.close();showToast(meds.length>1?`${meds.length} medicamentos salvos no histórico.`:'Histórico salvo.');};
   window.editarHistoricoMedicamento=id=>{const h=state.historicosMedicamentos.find(x=>x.id===id);if(!h)return;resetHistoricoForm();$('#modal-historico-title').textContent='Editar histórico';$('#hist-id').value=h.id;$('#hist-med-nome').value=h.medicamento||'';$('#hist-med-dose').value=h.dosagem||'';$('#hist-data').value=h.data||getHojeStr();$('#hist-dias').value=h.dias||'';$('#hist-paciente').value=h.paciente||'';$('#hist-medico-nome').value=h.medico||'';$('#hist-hospital-nome').value=h.hospital||'';$('#hist-tipo').value=h.tipo||'receitado';$('#hist-posologia').value=h.posologia||'';$('#hist-observacoes').value=h.observacoes||'';histModal.showModal();};
-  window.excluirHistoricoMedicamento=id=>customConfirm('Excluir registro','Deseja excluir este registro do histórico?',()=>{state.historicosMedicamentos=state.historicosMedicamentos.filter(x=>x.id!==id);saveCloud();renderHistoricosMedicamentos();});
+  window.excluirHistoricoMedicamento=id=>customConfirm('Excluir registro','Deseja excluir este registro do histórico?',()=>{marcarRemovido(id);state.historicosMedicamentos=state.historicosMedicamentos.filter(x=>x.id!==id);saveCloud();renderHistoricosMedicamentos();});
   function renderHistoricosMedicamentos(){const list=$('#historico-lista');if(!list)return;const val=id=>($('#'+id).value||'').trim().toLocaleLowerCase('pt-BR');const q=val('hist-busca'),p=val('hist-pessoa'),med=val('hist-medico'),hos=val('hist-hospital'),drug=val('hist-medicamento'),type=$('#hist-tipo-filtro').value,from=$('#hist-data-de').value,to=$('#hist-data-ate').value;const rows=(state.historicosMedicamentos||[]).filter(h=>{const all=[h.medicamento,h.dosagem,h.paciente,h.medico,h.hospital,h.tipo,h.posologia,h.observacoes,h.data,h.dias].join(' ').toLocaleLowerCase('pt-BR');return(!q||all.includes(q))&&(!p||(h.paciente||'').toLocaleLowerCase('pt-BR').includes(p))&&(!med||(h.medico||'').toLocaleLowerCase('pt-BR').includes(med))&&(!hos||(h.hospital||'').toLocaleLowerCase('pt-BR').includes(hos))&&(!drug||(h.medicamento||'').toLocaleLowerCase('pt-BR').includes(drug))&&(!type||h.tipo===type)&&(!from||h.data>=from)&&(!to||h.data<=to);}).sort((a,b)=>(b.data||'').localeCompare(a.data||''));$('#hist-resultados').textContent=`${rows.length} registro(s) encontrado(s) de ${(state.historicosMedicamentos||[]).length}.`;if(!rows.length){list.innerHTML='<div class="p-6 text-center text-slate-500 bg-white rounded-xl border border-slate-200">Nenhum registro encontrado. Ajuste os filtros ou cadastre um histórico.</div>';return;}list.innerHTML=rows.map(h=>`<article class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"><div class="flex flex-wrap justify-between gap-2"><div><h3 class="font-bold text-violet-900">${esc(h.medicamento||'Medicamento não informado')} <span class="text-xs font-semibold rounded-full px-2 py-1 ${h.tipo==='tomado'?'bg-emerald-100 text-emerald-800':'bg-blue-100 text-blue-800'}">${h.tipo==='tomado'?'Tomado eventualmente':'Receitado'}</span></h3><p class="text-sm text-slate-600 mt-1">${esc(h.dosagem||'Dose não informada')} · ${formatDataBR(h.data||'')} · ${h.dias?esc(h.dias)+' dia(s)':'duração não informada'}</p></div><div class="flex gap-2"><button class="text-xs px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700" onclick="window.editarHistoricoMedicamento('${h.id}')">Editar</button><button class="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-700" onclick="window.excluirHistoricoMedicamento('${h.id}')">Excluir</button></div></div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm"><p><span class="font-semibold">Quem tomou:</span> ${esc(h.paciente||'—')}</p><p><span class="font-semibold">Médico:</span> ${esc(h.medico||'—')}</p><p><span class="font-semibold">Hospital:</span> ${esc(h.hospital||'—')}</p><p><span class="font-semibold">Posologia:</span> ${esc(h.posologia||'—')}</p>${h.observacoes?`<p class="sm:col-span-2"><span class="font-semibold">Observações:</span> ${esc(h.observacoes)}</p>`:''}</div></article>`).join('');}
   ['hist-busca','hist-data-de','hist-data-ate','hist-pessoa','hist-medico','hist-hospital','hist-medicamento','hist-tipo-filtro'].forEach(id=>$('#'+id).addEventListener('input',renderHistoricosMedicamentos));
   $('#btn-limpar-filtros-hist').onclick=()=>{['hist-busca','hist-data-de','hist-data-ate','hist-pessoa','hist-medico','hist-hospital','hist-medicamento','hist-tipo-filtro'].forEach(id=>$('#'+id).value='');renderHistoricosMedicamentos();};
