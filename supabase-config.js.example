@@ -1,0 +1,7 @@
+// Exemplo de configuração pública do MediControl. Renomeie para supabase-config.js
+// e preencha com URL e chave PÚBLICA do projeto Supabase dedicado ao MediControl.
+// Nunca coloque GEMINI_API_KEY nem service_role neste arquivo.
+window.MEDICONTROL_SUPABASE_CONFIG = {
+  url: 'https://SEU-PROJETO-MEDICONTROL.supabase.co',
+  anonKey: 'SUA_CHAVE_PUBLICA_PUBLISHABLE_OU_ANON'
+};

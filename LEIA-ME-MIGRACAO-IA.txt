@@ -1,0 +1,25 @@
+MediControl v2.3.0 — leitura de receitas via dynamic-service
+
+O QUE MUDA
+- A leitura de receita deixa de chamar a função inexistente/antiga parse-prescription.
+- Passa a chamar dynamic-service com o mesmo formato usado pelo Nutri-Bio: systemInstruction, contents e generationConfig.responseSchema.
+- Mantém a autenticação atual do MediControl e a tabela medication_data.
+- Limita a imagem a 6 MB para ficar dentro do limite de Base64 aceito pela função enviada.
+
+IMPORTANTE SOBRE PROJETOS SUPABASE
+A dynamic-service valida a sessão contra o projeto onde está implantada. Portanto, para um MediControl com projeto Supabase dedicado, implante a MESMA função neste projeto dedicado também. Não basta chamar a função do projeto Nutri-Bio com uma sessão do projeto MediControl.
+
+PASSOS
+1. Faça backup dos arquivos publicados atuais.
+2. Publique o HTML v2.3.0 no mesmo repositório/pasta do MediControl. Mantenha o arquivo supabase-config.js ao lado do HTML.
+3. Confira que supabase-config.js define window.MEDICONTROL_SUPABASE_CONFIG com a URL e a chave pública do projeto dedicado do MediControl. Não use a service_role.
+4. No projeto Supabase dedicado do MediControl, implante supabase/functions/dynamic-service/index.ts (Supabase CLI ou fluxo de deploy usado no seu projeto).
+5. Em Edge Function Secrets desse projeto MediControl, configure GEMINI_API_KEY com a chave do Gemini. Não é necessário me enviar a chave.
+6. Verifique que a função implantada usa os segredos padrão SUPABASE_URL e SUPABASE_ANON_KEY do próprio projeto.
+7. Teste a leitura com uma imagem pequena, depois revise os campos extraídos antes de salvar.
+
+A FUNÇÃO dynamic-service usa a tabela ai_usage apenas para limite de uso; se a tabela não existir, ela registra um aviso e continua sem contador. Se desejar limite diário efetivo, aplique a migração ai_usage.sql correspondente ao repositório backend.
+
+SEGURANÇA
+- Não exponha GEMINI_API_KEY ou service_role no HTML nem em supabase-config.js.
+- Revise sempre a transcrição da receita; a IA pode cometer erros.
