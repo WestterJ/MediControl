@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f766e">
-<meta name="description" content="MediControl v2.4.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
+<meta name="description" content="MediControl v2.5.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>MediControl v2.4.0 — Medicamentos & Rotinas</title>
+<title>MediControl v2.5.0 — Medicamentos & Rotinas</title>
 <script src="./supabase-config.js"></script>
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -91,7 +91,7 @@
       <div class="bg-white text-teal-700 p-2 rounded-xl font-bold text-xl shadow-inner">💊</div>
       <div>
         <h1 class="text-lg md:text-xl font-bold tracking-tight">MediControl</h1>
-        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas · v2.4.0</small>
+        <small class="text-teal-100 opacity-90 text-xs flex items-center gap-1">Gestão Inteligente de Rotinas · v2.5.0</small>
       </div>
     </div>
     
@@ -209,6 +209,7 @@
               <th class="p-4 text-center">Horário</th>
               <th class="p-4">Frequência</th>
               <th class="p-4 text-center">Data Início</th>
+              <th class="p-4 text-center">Término</th>
               <th class="p-4 text-center">Ações</th>
             </tr>
           </thead>
@@ -385,7 +386,7 @@
     </div>
     <div class="grid grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm font-semibold text-slate-700 mb-1">Horário</label>
+        <label id="rotina-horario-label" class="block text-sm font-semibold text-slate-700 mb-1">Horário</label>
         <input type="time" id="rotina-horario" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
       </div>
       <div>
@@ -400,7 +401,19 @@
         <option value="dsdn">Dia sim, dia não (A cada 2 dias)</option>
         <option value="1s2n">1 dia sim, 2 dias não (A cada 3 dias)</option>
         <option value="semanal">Uma vez por semana</option>
+        <option value="dias">A cada X dias</option>
+        <option value="horas">A cada X horas</option>
       </select>
+    </div>
+    <div id="rotina-intervalo-box" class="hidden">
+      <label id="rotina-intervalo-label" class="block text-sm font-semibold text-slate-700 mb-1">Intervalo</label>
+      <input type="number" id="rotina-intervalo" min="1" max="72" step="1" inputmode="numeric" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+      <p id="rotina-intervalo-ajuda" class="text-xs text-slate-500 mt-1"></p>
+    </div>
+    <div>
+      <label class="block text-sm font-semibold text-slate-700 mb-1">Data de término <span class="font-normal text-slate-500">(opcional)</span></label>
+      <input type="date" id="rotina-dataFim" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+      <p class="text-xs text-slate-500 mt-1">Deixe em branco para uso contínuo.</p>
     </div>
     <div id="rotina-diaSemana-box" class="hidden">
       <label class="block text-sm font-semibold text-slate-700 mb-1">Dia da Semana</label>
@@ -506,7 +519,7 @@
   // ESTADO DA APLICAÇÃO
   let state = {
     medicamentos: [], // {id, nome, dosagem, obs}
-    rotinas: [],      // {id, medId, horario, frequencia, dataInicio, diaSemana}
+    rotinas: [],      // {id, medId, horario, frequencia, dataInicio, dataFim, diaSemana, intervalo}
     historico: [],    // {id, rotinaId, data, horaTomado}
     historicosMedicamentos: [] // registros de medicamentos receitados/tomados eventualmente
   };
@@ -912,7 +925,22 @@
   }
 
   $('#rotina-frequencia').onchange = e => {
-    $('#rotina-diaSemana-box').style.display = e.target.value === 'semanal' ? 'block' : 'none';
+    const f = e.target.value;
+    $('#rotina-diaSemana-box').style.display = f === 'semanal' ? 'block' : 'none';
+    const temIntervalo = f === 'horas' || f === 'dias';
+    $('#rotina-intervalo-box').style.display = temIntervalo ? 'block' : 'none';
+    $('#rotina-intervalo').required = temIntervalo;
+    $('#rotina-intervalo').max = f === 'horas' ? 72 : 365;
+    if (f === 'horas') {
+      $('#rotina-intervalo-label').textContent = 'A cada quantas horas?';
+      $('#rotina-intervalo-ajuda').textContent = 'As doses seguem de forma contínua a partir do horário da 1ª dose, inclusive de madrugada (ex.: 8 h a partir das 08:00 → 08:00, 16:00, 00:00).';
+      $('#rotina-horario-label').textContent = 'Horário da 1ª dose';
+    } else {
+      $('#rotina-intervalo-label').textContent = 'A cada quantos dias?';
+      $('#rotina-intervalo-ajuda').textContent = 'Ex.: 4 = toma no dia de início e depois a cada 4 dias.';
+      $('#rotina-horario-label').textContent = 'Horário';
+    }
+    if (temIntervalo && !$('#rotina-intervalo').value) $('#rotina-intervalo').value = f === 'horas' ? 8 : 2;
   };
 
   $('#btn-nova-rotina').onclick = () => {
@@ -922,6 +950,8 @@
     populateMedSelect();
     $('#rotina-horario').value = '08:00';
     $('#rotina-dataInicio').value = getHojeStr();
+    $('#rotina-dataFim').value = '';
+    $('#rotina-intervalo').value = '';
     $('#rotina-frequencia').value = 'diario';
     $('#rotina-frequencia').dispatchEvent(new Event('change'));
     modalRotina.showModal();
@@ -936,6 +966,8 @@
     $('#rotina-medId').value = r.medId;
     $('#rotina-horario').value = r.horario;
     $('#rotina-dataInicio').value = r.dataInicio;
+    $('#rotina-dataFim').value = r.dataFim || '';
+    $('#rotina-intervalo').value = r.intervalo || '';
     $('#rotina-frequencia').value = r.frequencia;
     $('#rotina-frequencia').dispatchEvent(new Event('change'));
     if(r.frequencia === 'semanal') $('#rotina-diaSemana').value = r.diaSemana;
@@ -955,14 +987,26 @@
     e.preventDefault();
     if(!$('#rotina-medId').value) return;
     const id = $('#rotina-id').value;
+    const freq = $('#rotina-frequencia').value;
+    const dataInicio = $('#rotina-dataInicio').value;
+    const dataFim = $('#rotina-dataFim').value || null;
+    if (dataFim && dataFim < dataInicio) { showToast('A data de término não pode ser anterior à data de início.'); return; }
+    let intervalo = null;
+    if (freq === 'horas' || freq === 'dias') {
+      intervalo = parseInt($('#rotina-intervalo').value, 10);
+      const max = freq === 'horas' ? 72 : 365;
+      if (!Number.isInteger(intervalo) || intervalo < 1 || intervalo > max) { showToast(`Informe um intervalo entre 1 e ${max}.`); return; }
+    }
     const payload = {
       updatedAt: new Date().toISOString(),
       id: id || novoId('r'),
       medId: $('#rotina-medId').value,
       horario: $('#rotina-horario').value,
-      dataInicio: $('#rotina-dataInicio').value,
-      frequencia: $('#rotina-frequencia').value,
-      diaSemana: $('#rotina-frequencia').value === 'semanal' ? parseInt($('#rotina-diaSemana').value) : null
+      dataInicio,
+      dataFim,
+      frequencia: freq,
+      intervalo,
+      diaSemana: freq === 'semanal' ? parseInt($('#rotina-diaSemana').value) : null
     };
     if(id) {
       const idx = state.rotinas.findIndex(x => x.id === id);
@@ -975,6 +1019,8 @@
     if(r.frequencia==='diario') return "Todos os dias";
     if(r.frequencia==='dsdn') return "Dia sim, dia não";
     if(r.frequencia==='1s2n') return "1 dia sim, 2 dias não";
+    if(r.frequencia==='horas') return `A cada ${r.intervalo} hora${r.intervalo===1?'':'s'}`;
+    if(r.frequencia==='dias') return `A cada ${r.intervalo} dias`;
     if(r.frequencia==='semanal') {
       const dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
       return "Semanal (" + dias[r.diaSemana] + ")";
@@ -985,7 +1031,7 @@
   function renderRotinas() {
     const tbody = $('#table-rotinas-body');
     if(state.rotinas.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500">Nenhuma rotina configurada.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-500">Nenhuma rotina configurada.</td></tr>`;
       return;
     }
     // Join rotinas com meds
@@ -1000,6 +1046,7 @@
         <td class="p-4 text-center font-bold text-slate-700">${formatarHora(r.horario)}</td>
         <td class="p-4 text-slate-700">${traduzirFrequencia(r)}</td>
         <td class="p-4 text-center text-slate-500">${formatDataBR(r.dataInicio)}</td>
+        <td class="p-4 text-center">${r.dataFim ? `<span class="${r.dataFim < getHojeStr() ? 'text-red-600 font-semibold' : 'text-slate-500'}">${formatDataBR(r.dataFim)}${r.dataFim < getHojeStr() ? ' · encerrada' : ''}</span>` : '<span class="text-emerald-700 font-medium">Contínuo</span>'}</td>
         <td class="p-4 text-center whitespace-nowrap">
           <button class="bg-sky-50 text-sky-600 px-3 py-1 rounded hover:bg-sky-100 mr-2 font-medium" onclick="window.editarRotina('${r.id}')">Editar</button>
           <button class="bg-red-50 text-red-600 px-3 py-1 rounded hover:bg-red-100 font-medium" onclick="window.excluirRotina('${r.id}')">Excluir</button>
@@ -1008,8 +1055,43 @@
     `).join('');
   }
 
+  // Doses de uma rotina "a cada X horas" em um dia: contínuas a partir da 1ª dose (dataInicio + horario).
+  function dosesDeHoras(rotina, dataAlvoStr) {
+    const n = Number(rotina.intervalo);
+    const [h, m] = String(rotina.horario || '').split(':').map(Number);
+    if (!Number.isFinite(n) || n < 1 || !Number.isFinite(h) || !Number.isFinite(m) || !rotina.dataInicio) return [];
+    const [Y, M, D] = rotina.dataInicio.split('-').map(Number);
+    const [y, mo, d] = dataAlvoStr.split('-').map(Number);
+    const t0 = new Date(Y, M - 1, D, h, m, 0, 0).getTime();
+    const passo = n * 3600000;
+    const ini = new Date(y, mo - 1, d, 0, 0, 0, 0).getTime();
+    const fim = new Date(y, mo - 1, d + 1, 0, 0, 0, 0).getTime();
+    const out = [];
+    for (let t = t0 + Math.max(0, Math.ceil((ini - t0) / passo)) * passo; t < fim; t += passo) {
+      const dt = new Date(t);
+      out.push(String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0'));
+    }
+    return out;
+  }
+
+  // Horários (doses) previstos da rotina no dia; vazio se não há dose.
+  function dosesDoDia(rotina, dataAlvoStr) {
+    if (rotina.frequencia === 'horas') {
+      if (dataAlvoStr < rotina.dataInicio || (rotina.dataFim && dataAlvoStr > rotina.dataFim)) return [];
+      return dosesDeHoras(rotina, dataAlvoStr);
+    }
+    return deveTomarNesteDia(rotina, dataAlvoStr) ? [rotina.horario] : [];
+  }
+
+  // A dose foi marcada como tomada? Rotinas "a cada X horas" comparam o horário previsto; as demais, só rotina+dia.
+  function doseTomada(rotina, dataStr, slot) {
+    return state.historico.some(h => h.rotinaId === rotina.id && h.data === dataStr && (rotina.frequencia !== 'horas' || h.horaPrevista === slot));
+  }
+
   function deveTomarNesteDia(rotina, dataAlvoStr) {
     if (dataAlvoStr < rotina.dataInicio) return false;
+    if (rotina.dataFim && dataAlvoStr > rotina.dataFim) return false;
+    if (rotina.frequencia === 'horas') return dosesDeHoras(rotina, dataAlvoStr).length > 0;
     
     if (rotina.frequencia === 'diario') return true;
     
@@ -1025,6 +1107,11 @@
     
     if (rotina.frequencia === '1s2n') {
       return diff % 3 === 0;
+    }
+
+    if (rotina.frequencia === 'dias') {
+      const n = Number(rotina.intervalo);
+      return Number.isFinite(n) && n >= 1 && diff % n === 0;
     }
     
     return false;
@@ -1105,22 +1192,22 @@
     try { sent = JSON.parse(localStorage.getItem(NOTIF_SENT_KEY) || '{}'); } catch (_) { sent = {}; }
 
     state.rotinas.forEach(rotina => {
-      if (!deveTomarNesteDia(rotina, today)) return;
-      const taken = state.historico.some(h => h.rotinaId === rotina.id && h.data === today);
-      if (taken) return;
-      const [hour, minute] = String(rotina.horario || '').split(':').map(Number);
-      if (!Number.isFinite(hour) || !Number.isFinite(minute)) return;
-      const due = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
-      const diffMs = now.getTime() - due.getTime();
-      // Janela de 5 minutos evita avisos antigos ao reabrir o app horas depois.
-      if (diffMs < 0 || diffMs > 5 * 60 * 1000) return;
-      const sentKey = `${today}_${rotina.id}`;
-      if (sent[sentKey]) return;
-      const med = state.medicamentos.find(m => m.id === rotina.medId);
-      if (!med) return;
-      sendMedicationNotification('Hora do medicamento 💊', `${med.nome} — ${med.dosagem}. Horário programado: ${rotina.horario}.`, sentKey);
-      sent[sentKey] = new Date().toISOString();
-      localStorage.setItem(NOTIF_SENT_KEY, JSON.stringify(sent));
+      dosesDoDia(rotina, today).forEach(slot => {
+        if (doseTomada(rotina, today, slot)) return;
+        const [hour, minute] = String(slot || '').split(':').map(Number);
+        if (!Number.isFinite(hour) || !Number.isFinite(minute)) return;
+        const due = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+        const diffMs = now.getTime() - due.getTime();
+        // Janela de 5 minutos evita avisos antigos ao reabrir o app horas depois.
+        if (diffMs < 0 || diffMs > 5 * 60 * 1000) return;
+        const sentKey = rotina.frequencia === 'horas' ? `${today}_${rotina.id}_${slot}` : `${today}_${rotina.id}`;
+        if (sent[sentKey]) return;
+        const med = state.medicamentos.find(m => m.id === rotina.medId);
+        if (!med) return;
+        sendMedicationNotification('Hora do medicamento 💊', `${med.nome} — ${med.dosagem}. Horário programado: ${slot}.`, sentKey);
+        sent[sentKey] = new Date().toISOString();
+        localStorage.setItem(NOTIF_SENT_KEY, JSON.stringify(sent));
+      });
     });
 
     // Mantém somente registros recentes para evitar crescimento indefinido.
@@ -1156,28 +1243,31 @@
   function getMedicamentosDoDia(dataStr) {
     const medsDoDia = [];
     state.rotinas.forEach(r => {
-      if (deveTomarNesteDia(r, dataStr)) {
-        const m = state.medicamentos.find(x => x.id === r.medId);
-        if (m) {
-          const isTomado = state.historico.some(h => h.rotinaId === r.id && h.data === dataStr);
-          medsDoDia.push({ ...r, medObj: m, tomado: isTomado });
-        }
-      }
+      const m = state.medicamentos.find(x => x.id === r.medId);
+      if (!m) return;
+      dosesDoDia(r, dataStr).forEach(slot => {
+        medsDoDia.push({ ...r, horario: slot, slot, medObj: m, tomado: doseTomada(r, dataStr, slot) });
+      });
     });
     return medsDoDia.sort((a,b) => a.horario.localeCompare(b.horario));
   }
 
-  window.toggleTomado = function(rotinaId, dataStr, elCheckbox) {
+  window.toggleTomado = function(rotinaId, dataStr, elCheckbox, slot) {
     const isChecked = elCheckbox.checked;
+    const rotina = state.rotinas.find(r => r.id === rotinaId);
+    const porDose = !!rotina && rotina.frequencia === 'horas';
+    const casa = h => h.rotinaId === rotinaId && h.data === dataStr && (!porDose || h.horaPrevista === slot);
     if (isChecked) {
       // Registrar no histórico
       const horaStr = new Date().toTimeString().split(' ')[0];
-      state.historico.push({ id: novoId('h'), rotinaId, data: dataStr, horaTomado: horaStr });
+      const reg = { id: novoId('h'), rotinaId, data: dataStr, horaTomado: horaStr };
+      if (porDose) reg.horaPrevista = slot;
+      state.historico.push(reg);
       elCheckbox.closest('.med-card').classList.add('opacity-60', 'bg-emerald-50');
     } else {
       // Remover do histórico
-      marcarRemovido(...state.historico.filter(h => h.rotinaId === rotinaId && h.data === dataStr).map(h => h.id));
-      state.historico = state.historico.filter(h => !(h.rotinaId === rotinaId && h.data === dataStr));
+      marcarRemovido(...state.historico.filter(casa).map(h => h.id));
+      state.historico = state.historico.filter(h => !casa(h));
       elCheckbox.closest('.med-card').classList.remove('opacity-60', 'bg-emerald-50');
     }
     saveCloud(); // Auto save
@@ -1196,7 +1286,7 @@
     c.innerHTML = meds.map(m => {
       const cardClasses = m.tomado ? "med-card flex items-center p-4 bg-emerald-50 border border-emerald-200 rounded-xl transition opacity-60" : "med-card flex items-center p-4 bg-white border border-slate-200 rounded-xl transition shadow-sm";
       const checkHTML = showCheckbox 
-        ? `<input type="checkbox" class="med-checkbox shrink-0 ml-4" ${m.tomado?'checked':''} onchange="window.toggleTomado('${m.id}', '${dataStr}', this)">`
+        ? `<input type="checkbox" class="med-checkbox shrink-0 ml-4" ${m.tomado?'checked':''} onchange="window.toggleTomado('${m.id}', '${dataStr}', this, '${m.slot}')">`
         : `<div class="shrink-0 ml-4 bg-slate-100 text-slate-400 p-1.5 rounded-lg text-xs font-bold">${formatarHora(m.horario)}</div>`;
 
       return `
@@ -1265,7 +1355,7 @@
     return (state.historico || []).map(h => {
       const rotina = state.rotinas.find(r => r.id === h.rotinaId) || null;
       const med = rotina ? state.medicamentos.find(m => m.id === rotina.medId) : null;
-      return {...h, rotina, med, nome: med ? med.nome : 'Medicamento/rotina removida', dosagem: med ? med.dosagem : '', horarioRotina: rotina ? rotina.horario : ''};
+      return {...h, rotina, med, nome: med ? med.nome : 'Medicamento/rotina removida', dosagem: med ? med.dosagem : '', horarioRotina: h.horaPrevista || (rotina ? rotina.horario : '')};
     }).filter(h => (!q || [h.nome,h.dosagem,h.horarioRotina].join(' ').toLocaleLowerCase('pt-BR').includes(q)) && (!from || h.data >= from) && (!to || h.data <= to))
       .sort((a,b) => (b.data || '').localeCompare(a.data || '') || (b.horaTomado || '').localeCompare(a.horaTomado || ''));
   }

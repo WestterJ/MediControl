@@ -1,4 +1,4 @@
-MEDICONTROL v2.4.0 - Controle de medicamentos (PWA)
+MEDICONTROL v2.5.0 - Controle de medicamentos (PWA)
 
 ARQUIVOS
 - index.html: aplicativo. sw.js e manifest.webmanifest: PWA. supabase-config.js: URL e chave PÚBLICA do Supabase.
@@ -24,3 +24,10 @@ MUDANÇAS DA v2.4.0
 - Fila de salvamento, checagem de conflito e marcas de remoção.
 - Notificações pelo service worker, ícone local e aviso de limitações.
 - IDs únicos entre aparelhos. Token manual de Google Drive/OneDrive removido. Tailwind e Supabase com versão fixa.
+
+
+MUDANÇAS DA v2.5.0
+- Rotinas "A cada X horas": as doses seguem contínuas a partir da 1ª dose (inclusive de madrugada) e cada dose é marcada e notificada separadamente.
+- Rotinas "A cada X dias" (intervalo livre).
+- Data de término opcional no cadastro da rotina; em branco = uso contínuo. Após o término a rotina deixa de aparecer, de notificar e é marcada como encerrada na lista.
+- Não há mudança no banco: as novas informações ficam no mesmo JSON (medication_data). Doses por horário gravam "horaPrevista" no histórico.
