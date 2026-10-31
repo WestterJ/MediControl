@@ -1,48 +1,110 @@
 'use strict';
-// Leitura de receita por IA (dynamic-service)
+// Leitura de receita por IA (Edge Function dynamic-service).
+// Padrão do Diário Nutricional V42: UMA chamada por clique, contagem em segundos e botão Cancelar.
+// RECEITA_IA_MODO: 'refeicao' usa o modo rápido que a função já tem (raciocínio desligado + modelo reserva).
+// Depois de acrescentar o modo "receita" na função (ver LEIA-ME), troque para 'receita'.
+const RECEITA_IA_MODO = 'refeicao';
+const RECEITA_IA_LIMITE_S = 45;
 
-$('#btn-ler-receita-ia').onclick=async()=>{
-  const file=$('#hist-receita-arquivo').files[0];
-  if(!file){$('#hist-ia-status').textContent='Selecione uma foto ou imagem da receita primeiro.';return;}
-  if(!supabaseClient||!supabaseUser){$('#hist-ia-status').textContent='Entre na sua conta para usar a leitura por IA.';return;}
-  if(!['image/jpeg','image/png','image/webp'].includes((file.type||'').toLowerCase())){$('#hist-ia-status').textContent='Formato não suportado. Escolha uma imagem JPG, PNG ou WEBP.';return;}
-  const btn=$('#btn-ler-receita-ia');btn.disabled=true;$('#hist-ia-status').textContent='Preparando imagem e analisando a receita…';
-  try{
-    // Reduz resolução e tamanho antes de enviar para diminuir o risco de timeout em fotos grandes.
-    const img=await new Promise((resolve,reject)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);resolve(im)};im.onerror=()=>{URL.revokeObjectURL(u);reject(new Error('Não foi possível abrir a imagem.'))};im.src=u;});
-    const scale=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight));
-    const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
-    const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);
-    let blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.82));
-    if(!blob)throw new Error('Não foi possível otimizar a imagem. Tente outra foto.');
-    if(blob.size>2*1024*1024)blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.65));
-    if(!blob||blob.size>3*1024*1024)throw new Error('A imagem continua muito grande. Recorte a receita para mostrar somente a folha e tente novamente.');
-    const b64=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(new Error('Não foi possível ler a imagem.'));r.readAsDataURL(blob);});
-    const systemText=[
-      'Você é um assistente de leitura e transcrição de receitas médicas. Responda em português do Brasil e devolva somente JSON conforme o esquema.',
-      'Uma receita pode conter vários medicamentos. Extraia TODOS os medicamentos visíveis como itens separados no array medicamentos; não escolha apenas o primeiro.',
-      'Para cada medicamento, capture nome, dosagem/apresentação e posologia/frequência exatamente como visíveis. Não invente nem corrija prescrições.',
-      'Transcreva somente dados legíveis. Campos ausentes ou incertos devem ser strings vazias. Não deduza a data atual nem presuma nome do paciente.',
-      'Use data no formato AAAA-MM-DD somente se estiver claramente identificada. dias deve conter somente duração explícita em número de dias; caso contrário string vazia.',
-      'Não ofereça diagnóstico nem altere a prescrição. Os resultados serão revisados por uma pessoa antes de salvar.'
-    ].join(' ');
-    const medSchema={type:'OBJECT',properties:{nome:{type:'STRING'},dosagem:{type:'STRING'},posologia:{type:'STRING'}},required:['nome','dosagem','posologia']};
-    const responseSchema={type:'OBJECT',properties:{medicamentos:{type:'ARRAY',items:medSchema},data:{type:'STRING'},dias:{type:'STRING'},paciente:{type:'STRING'},medico:{type:'STRING'},hospital:{type:'STRING'},observacoes:{type:'STRING'}},required:['medicamentos','data','dias','paciente','medico','hospital','observacoes']};
-    const payload={systemInstruction:{parts:[{text:systemText}]},contents:[{role:'user',parts:[{text:'Leia a receita e extraia todos os medicamentos e os dados comuns legíveis. Não invente campos ausentes.'},{inlineData:{mimeType:'image/jpeg',data:b64}}]}],generationConfig:{responseMimeType:'application/json',responseSchema}};
-    const {data,error}=await supabaseClient.functions.invoke('dynamic-service',{body:payload});
-    if(error){let detail=error.message||'Falha ao chamar dynamic-service.';try{if(error.context&&typeof error.context.json==='function'){const body=await error.context.json();if(body&&(body.error||body.message))detail=body.error||body.message;}}catch(_){}throw new Error(detail+' Confira os logs da Edge Function dynamic-service no projeto Supabase do MediControl.');}
-    const parts=data&&data.candidates&&data.candidates[0]&&data.candidates[0].content?data.candidates[0].content.parts||[]:[];
-    const answer=parts.find(part=>part&&typeof part.text==='string')?.text;if(!answer)throw new Error('A IA não retornou texto legível. Tente novamente com uma foto mais nítida.');
-    let x;try{x=JSON.parse(answer.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim());}catch(_){throw new Error('A resposta da IA veio em formato inválido. Tente novamente.');}
-    const meds=Array.isArray(x.medicamentos)?x.medicamentos.filter(m=>m&&String(m.nome||'').trim()).map(m=>({nome:String(m.nome||''),dosagem:String(m.dosagem||''),posologia:String(m.posologia||'')})):[];
-    if(!meds.length)throw new Error('Não identifiquei medicamentos com segurança. Confira se a receita está nítida e legível.');
-    receitaMedicamentosIA=meds;
-    const common={data:'hist-data',dias:'hist-dias',paciente:'hist-paciente',medico:'hist-medico-nome',hospital:'hist-hospital-nome',observacoes:'hist-observacoes'};
-    Object.entries(common).forEach(([key,id])=>{if(typeof x[key]==='string'&&x[key].trim())$('#'+id).value=x[key].trim();});
-    $('#hist-tipo').value='receitado';
-    $('#hist-med-nome').value=meds[0].nome;$('#hist-med-dose').value=meds[0].dosagem;$('#hist-posologia').value=meds[0].posologia;
-    const panel=$('#hist-ia-medicamentos');panel.innerHTML='<p class="text-sm font-bold text-violet-900">Medicamentos identificados ('+meds.length+'). Confira e edite cada item antes de salvar:</p>'+meds.map((m,i)=>`<div data-ia-med-index="${i}" class="rounded-lg border border-violet-200 bg-white p-3 space-y-2"><p class="text-xs font-semibold text-slate-500">Medicamento ${i+1}</p><label class="block text-xs font-semibold text-slate-700">Nome<input data-field="nome" value="${esc(m.nome)}" class="mt-1 w-full rounded border border-slate-300 p-2 text-sm font-normal"></label><label class="block text-xs font-semibold text-slate-700">Dosagem / apresentação<input data-field="dose" value="${esc(m.dosagem)}" class="mt-1 w-full rounded border border-slate-300 p-2 text-sm font-normal"></label><label class="block text-xs font-semibold text-slate-700">Posologia / frequência<input data-field="posologia" value="${esc(m.posologia)}" class="mt-1 w-full rounded border border-slate-300 p-2 text-sm font-normal"></label></div>`).join('');panel.classList.remove('hidden');
-    $('#hist-ia-status').textContent='Leitura concluída. Foram identificados '+meds.length+' medicamento(s). Confira nome, dose e posologia; ao salvar, cada medicamento será registrado separadamente.';
-  }catch(err){console.error('MediControl prescription AI error:',err);$('#hist-ia-status').textContent='Não foi possível ler a receita: '+(err.message||String(err));}
-  finally{btn.disabled=false;}
-};
+const RECEITA_SCHEMA = (() => {
+  const S = { type: 'STRING' };
+  const item = { type: 'OBJECT', properties: { nome: S, dosagem: S, quantidade: S, posologia: S, dias: S }, required: ['nome', 'dosagem', 'quantidade', 'posologia', 'dias'] };
+  return { type: 'OBJECT', properties: { itens: { type: 'ARRAY', items: item }, data: S, paciente: S, medico: S, crm: S, hospital: S, observacoes: S }, required: ['itens', 'data', 'paciente', 'medico', 'crm', 'hospital', 'observacoes'] };
+})();
+
+const RECEITA_PROMPT = [
+  'Você transcreve receitas médicas (impressas ou manuscritas, a foto pode estar girada). Responda em português do Brasil, somente JSON no esquema.',
+  'Extraia TODOS os medicamentos como itens separados. Em cada item: nome, dosagem (ex.: 500 mg), quantidade dispensada (ex.: 3 comprimidos), posologia exatamente como escrita e dias (somente o número de dias de uso).',
+  'Transcreva só o que estiver legível; campo ausente ou incerto = string vazia. Não invente, não corrija prescrição, não ofereça diagnóstico.',
+  'data = data da receita em AAAA-MM-DD, só se estiver clara. paciente, medico, crm (ex.: CRM-GO 11.548) e hospital (clínica/instituição) como escritos. observacoes: no máximo uma frase curta.'
+].join(' ');
+
+// Reduz a foto antes de enviar (menos bytes = resposta mais rápida) e devolve o JPEG em base64.
+async function reduzirImagemReceita(file) {
+  const img = await new Promise((ok, erro) => {
+    const u = URL.createObjectURL(file), im = new Image();
+    im.onload = () => { URL.revokeObjectURL(u); ok(im); };
+    im.onerror = () => { URL.revokeObjectURL(u); erro(new Error('Não foi possível abrir a imagem.')); };
+    im.src = u;
+  });
+  const escala = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise(ok => canvas.toBlob(ok, 'image/jpeg', 0.8));
+  if (!blob) throw new Error('Não foi possível otimizar a imagem. Tente outra foto.');
+  return await new Promise((ok, erro) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => erro(new Error('Não foi possível ler a imagem.')); r.readAsDataURL(blob); });
+}
+
+async function chamarIAReceita(file, signal) {
+  const b64 = await reduzirImagemReceita(file);
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) throw new Error('Sessão expirada. Entre novamente na sua conta.');
+  const payload = {
+    modo: RECEITA_IA_MODO,
+    systemInstruction: { parts: [{ text: RECEITA_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: 'Leia a receita e extraia os medicamentos e os dados legíveis.' }, { inlineData: { mimeType: 'image/jpeg', data: b64 } }] }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: RECEITA_SCHEMA }
+  };
+  const resp = await fetch(supabaseConfig.url.replace(/\/$/, '') + '/functions/v1/dynamic-service', {
+    method: 'POST', signal, body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token, 'apikey': supabaseConfig.key }
+  });
+  const json = await resp.json().catch(() => null);
+  console.info('IA receita:', resp.status, resp.headers.get('Server-Timing') || '');
+  if (!resp.ok) throw new Error((json && (json.error || json.message)) || `Erro HTTP ${resp.status} na função dynamic-service.`);
+  const partes = (((json.candidates || [])[0] || {}).content || {}).parts || [];
+  const texto = (partes.find(p => p && typeof p.text === 'string') || {}).text;
+  if (!texto) throw new Error('A IA não retornou texto legível. Tente novamente com uma foto mais nítida.');
+  let x;
+  try { x = JSON.parse(texto.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()); }
+  catch (_) { throw new Error('A resposta da IA veio incompleta. Tente de novo ou preencha manualmente.'); }
+  const t = k => String(x[k] || '').trim();
+  const itens = (Array.isArray(x.itens) ? x.itens : []).filter(i => i && String(i.nome || '').trim()).map(i => ({
+    nome: String(i.nome).trim(), dosagem: String(i.dosagem || '').trim(), quantidade: String(i.quantidade || '').trim(),
+    posologia: String(i.posologia || '').trim(), dias: String(i.dias || '').replace(/\D/g, '')
+  }));
+  if (!itens.length) throw new Error('Não identifiquei medicamentos com segurança. Confira se a receita está nítida e legível.');
+  return { itens, data: /^\d{4}-\d{2}-\d{2}$/.test(t('data')) ? t('data') : '', paciente: t('paciente'), medico: t('medico'), crm: t('crm'), hospital: t('hospital'), observacoes: t('observacoes') };
+}
+
+// Controla botão, contagem em segundos, Cancelar e mensagens. Usado pelo cadastro de receitas e pelo histórico de medicamentos.
+async function iniciarLeituraIA({ arquivo, botao, cancelar, status, aoConcluir }) {
+  if (!arquivo) { status.textContent = 'Selecione uma foto ou imagem da receita primeiro.'; return; }
+  if (!supabaseClient || !supabaseUser) { status.textContent = 'Entre na sua conta para usar a leitura por IA.'; return; }
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes((arquivo.type || '').toLowerCase())) { status.textContent = 'Formato não suportado. Escolha uma imagem JPG, PNG ou WEBP.'; return; }
+  const ctrl = new AbortController();
+  let seg = 0, motivo = '';
+  botao.disabled = true; cancelar.classList.remove('hidden');
+  cancelar.onclick = () => { motivo = 'cancelado'; ctrl.abort(); };
+  const mostrar = () => { status.textContent = seg < 15 ? `Lendo a receita… ${seg} s` : `Ainda lendo… ${seg} s. A IA está lenta; você pode cancelar e tentar de novo.`; };
+  mostrar();
+  const timer = setInterval(() => { seg++; if (seg >= RECEITA_IA_LIMITE_S) { motivo = 'tempo'; ctrl.abort(); } mostrar(); }, 1000);
+  try {
+    const x = await chamarIAReceita(arquivo, ctrl.signal);
+    aoConcluir(x);
+    status.textContent = `Leitura concluída em ${seg} s: ${x.itens.length} medicamento(s). Confira tudo antes de salvar.`;
+  } catch (err) {
+    if (err && err.name === 'AbortError') status.textContent = motivo === 'tempo' ? `Passou de ${RECEITA_IA_LIMITE_S} s e a leitura foi cancelada. Tente de novo (a segunda tentativa costuma ser mais rápida) ou preencha manualmente.` : 'Leitura cancelada.';
+    else { console.error('MediControl IA receita:', err); status.textContent = 'Não foi possível ler a receita: ' + (err.message || String(err)); }
+  } finally { clearInterval(timer); botao.disabled = false; cancelar.classList.add('hidden'); }
+}
+
+// Histórico de medicamentos (formulário antigo): preenche os campos com o resultado.
+$('#btn-ler-receita-ia').onclick = () => iniciarLeituraIA({
+  arquivo: $('#hist-receita-arquivo').files[0], botao: $('#btn-ler-receita-ia'), cancelar: $('#btn-cancelar-receita-ia'), status: $('#hist-ia-status'),
+  aoConcluir: x => {
+    receitaMedicamentosIA = x.itens;
+    const comum = { data: 'hist-data', paciente: 'hist-paciente', medico: 'hist-medico-nome', hospital: 'hist-hospital-nome', observacoes: 'hist-observacoes' };
+    Object.entries(comum).forEach(([k, id]) => { if (x[k]) $('#' + id).value = x[k]; });
+    if (x.itens[0].dias) $('#hist-dias').value = x.itens[0].dias;
+    $('#hist-tipo').value = 'receitado';
+    $('#hist-med-nome').value = x.itens[0].nome; $('#hist-med-dose').value = x.itens[0].dosagem; $('#hist-posologia').value = x.itens[0].posologia;
+    const campo = (rot, f, v) => `<label class="block text-xs font-semibold text-slate-700">${rot}<input data-field="${f}" value="${esc(v)}" class="mt-1 w-full rounded border border-slate-300 p-2 text-sm font-normal"></label>`;
+    const painel = $('#hist-ia-medicamentos');
+    painel.innerHTML = `<p class="text-sm font-bold text-violet-900">Medicamentos identificados (${x.itens.length}). Confira e edite cada item antes de salvar:</p>` +
+      x.itens.map((m, i) => `<div data-ia-med-index="${i}" class="rounded-lg border border-violet-200 bg-white p-3 space-y-2"><p class="text-xs font-semibold text-slate-500">Medicamento ${i + 1}</p>${campo('Nome', 'nome', m.nome)}${campo('Dosagem / apresentação', 'dose', m.dosagem)}${campo('Posologia / frequência', 'posologia', m.posologia)}</div>`).join('');
+    painel.classList.remove('hidden');
+  }
+});

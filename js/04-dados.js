@@ -10,6 +10,8 @@ function loadLocalData() {
       state.rotinas = parsed.rotinas || [];
       state.historico = parsed.historico || [];
       state.historicosMedicamentos = parsed.historicosMedicamentos || [];
+      state.receitas = parsed.receitas || [];
+      state.removidos = parsed.removidos || {};
     }
   } catch(e) {}
   updateCloudStatusPill();
@@ -37,6 +39,7 @@ $('#file-input-json').onchange = e => {
         state.rotinas = parsed.rotinas || [];
         state.historico = parsed.historico || [];
         state.historicosMedicamentos = parsed.historicosMedicamentos || [];
+        state.receitas = parsed.receitas || [];
         saveCloud(); refreshAll(); showToast("Backup importado!");
       }
     } catch(err) { showToast("Arquivo inválido."); }
@@ -47,7 +50,7 @@ $('#file-input-json').onchange = e => {
 
 $('#btn-resetar').onclick = () => {
   customConfirm('Apagar Dados', 'Apagar todos os medicamentos e rotinas? Esta ação não tem volta.', () => {
-    state = { medicamentos: [], rotinas: [], historico: [], historicosMedicamentos: [] };
+    state = { medicamentos: [], rotinas: [], historico: [], historicosMedicamentos: [], receitas: [] };
     saveCloud(); refreshAll(); showToast("Todos os dados apagados.");
   });
 };

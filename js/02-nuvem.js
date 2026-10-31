@@ -111,7 +111,7 @@ function mergeStates(a, b) {
     }));
     return [...m.values()].filter(it => it.id == null || !rem[String(it.id)]);
   };
-  return { medicamentos: lista(a.medicamentos, b.medicamentos), rotinas: lista(a.rotinas, b.rotinas), historico: lista(a.historico, b.historico), historicosMedicamentos: lista(a.historicosMedicamentos, b.historicosMedicamentos), removidos: rem };
+  return { medicamentos: lista(a.medicamentos, b.medicamentos), rotinas: lista(a.rotinas, b.rotinas), historico: lista(a.historico, b.historico), historicosMedicamentos: lista(a.historicosMedicamentos, b.historicosMedicamentos), receitas: lista(a.receitas, b.receitas), removidos: rem };
 }
 
 // Grava só se a nuvem ainda está na versão que lemos; se outro aparelho gravou antes, mescla e tenta de novo.

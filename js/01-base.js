@@ -58,7 +58,8 @@ let state = {
   medicamentos: [], // {id, nome, dosagem, obs}
   rotinas: [],      // {id, medId, horario, frequencia, dataInicio, dataFim, diaSemana, intervalo}
   historico: [],    // {id, rotinaId, data, horaTomado}
-  historicosMedicamentos: [] // registros de medicamentos receitados/tomados eventualmente
+  historicosMedicamentos: [], // registros de medicamentos receitados/tomados eventualmente
+  receitas: [] // {id, data, paciente, medico, crm, hospital, tipo, observacoes, itens:[{id, nome, dosagem, quantidade, posologia, dias, medId}]}
 };
 
 const STORAGE_KEY = 'med_control_cloud_api_v1';
