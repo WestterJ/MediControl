@@ -1,0 +1,40 @@
+{
+  "id": "rc_5b1d7a3e-24a0",
+  "data": "2026-10-24",
+  "paciente": "Amanda",
+  "medico": "Dra. Daniella Borges",
+  "crm": "CRM-GO 11.548",
+  "hospital": "Instituto de Neurologia de Goiânia",
+  "tipo": "Controle especial",
+  "observacoes": "Clínica Médica – Geriatria. Cadastrada por leitura da foto da receita manuscrita: conferir o sobrenome da paciente (Amanda Silva de Mat…), o nome do 2º medicamento (Predsim) e a quantidade do Cerumin, que não está legível.",
+  "updatedAt": "2026-10-31T18:20:00.000Z",
+  "itens": [
+    {
+      "id": "ri_a1c3e5f7-0001",
+      "nome": "Azitromicina",
+      "dosagem": "500 mg",
+      "quantidade": "3 comprimidos",
+      "posologia": "1 comprimido, 1 vez ao dia",
+      "dias": 3,
+      "medId": "m_ed34339e-fa0d"
+    },
+    {
+      "id": "ri_a1c3e5f7-0002",
+      "nome": "Predsim",
+      "dosagem": "40 mg",
+      "quantidade": "3 comprimidos",
+      "posologia": "1 comprimido, 1 vez ao dia",
+      "dias": 3,
+      "medId": "m_d666cec2-c7e3"
+    },
+    {
+      "id": "ri_a1c3e5f7-0003",
+      "nome": "Cerumin",
+      "dosagem": "",
+      "quantidade": "",
+      "posologia": "Uso no ouvido: pingar 2 gotas, de 8 em 8 horas",
+      "dias": 2,
+      "medId": "m_7077301f-120c"
+    }
+  ]
+}
