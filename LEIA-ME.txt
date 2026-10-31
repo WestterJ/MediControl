@@ -1,9 +1,17 @@
-MEDICONTROL v2.5.0 - Controle de medicamentos (PWA)
+MEDICONTROL v3.0.0 - Controle de medicamentos (PWA)
 
 ARQUIVOS
-- index.html: aplicativo. sw.js e manifest.webmanifest: PWA. supabase-config.js: URL e chave PÚBLICA do Supabase.
-- Supabase_MediControl_v2_setup.sql: cria a tabela medication_data com RLS (cada usuário acessa só o próprio registro).
-- Esta versão substitui o HTML legado, o SQL antigo e os dois LEIA-ME anteriores.
+- index.html, css/app.css e js/*.js (módulos numerados): aplicativo. Mapa completo em ARQUITETURA.md.
+- sw.js e manifest.webmanifest: PWA. supabase-config.js: URL e chave PÚBLICA do Supabase (é seu; não vem neste pacote).
+- Supabase_MediControl_v2_setup.sql: cria a tabela medication_data com RLS.
+- scripts/verificar.py: verificação rápida antes de publicar (python3 scripts/verificar.py .).
+
+MUDANÇAS DA v3.0.0
+- Menu lateral (gaveta no celular, fixo/recolhível no computador) no lugar dos botões do topo e do menu "Menu".
+- Código dividido em módulos e CSS próprio; regras e dados não mudaram (sem alteração no banco).
+- Início com indicadores: tomadas, pendentes, atrasadas e próxima dose.
+- Backup, importação e apagar dados ficaram em "Nuvem e configurações". "Sincronizar agora" e "Sair da conta" ficam no rodapé do menu (antes não havia botão de sair visível).
+- Removido código morto de Drive/OneDrive e o modal de conflito antigo.
 
 SUPABASE
 - Os dados ficam na tabela medication_data do projeto Supabase compartilhado com os outros apps (o antigo projeto "medicamentos" foi aposentado). Rode o SQL acima uma vez, se a tabela não existir.
