@@ -1,10 +1,18 @@
-MEDICONTROL v3.0.0 - Controle de medicamentos (PWA)
+MEDICONTROL v3.1.0 - Controle de medicamentos (PWA)
 
 ARQUIVOS
 - index.html, css/app.css e js/*.js (módulos numerados): aplicativo. Mapa completo em ARQUITETURA.md.
 - sw.js e manifest.webmanifest: PWA. supabase-config.js: URL e chave PÚBLICA do Supabase (é seu; não vem neste pacote).
 - Supabase_MediControl_v2_setup.sql: cria a tabela medication_data com RLS.
 - scripts/verificar.py: verificação rápida antes de publicar (python3 scripts/verificar.py .).
+
+MUDANÇAS DA v3.1.0
+- Novo módulo "Receitas" (menu lateral): cadastro de receita com médico, CRM, clínica, tipo e vários medicamentos (dose, quantidade, posologia, dias), vínculo com os medicamentos do app, status do tratamento (em andamento / concluído), filtros e histórico de medicamentos receitados.
+- Leitura por IA: uma chamada por clique, contagem em segundos, botão Cancelar e limite de 45 s (no cadastro de receitas e no formulário antigo de histórico).
+- Causa da lentidão: o app chamava a função dynamic-service sem "modo", e nesse caminho ela espera até 100 s, sem modelo reserva e com raciocínio ligado. Agora usa o modo rápido (raciocínio desligado + modelo reserva). Para ficar ideal, acrescente UMA linha em MODOS no index.ts da função e troque RECEITA_IA_MODO para 'receita' em js/11-receita-ia.js:
+    receita: { texto: 4000, tokens: 2500, temp: 0.1, imagem: true, rapido: true }, // Receitas do MediControl
+- "receitas" entra na sincronização, no backup e no apagar tudo; "removidos" agora também é restaurado ao abrir o app.
+- scripts/receita-amanda-2026-10-24.json: receita já gravada no banco (para reimportar, se precisar).
 
 MUDANÇAS DA v3.0.0
 - Menu lateral (gaveta no celular, fixo/recolhível no computador) no lugar dos botões do topo e do menu "Menu".

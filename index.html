@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0f766e">
-<meta name="description" content="MediControl v3.0.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
+<meta name="description" content="MediControl v3.1.0: medicamentos, rotinas, histórico de tratamentos e leitura de receitas por IA.">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>MediControl v3.0.0 — Medicamentos & Rotinas</title>
+<title>MediControl v3.1.0 — Medicamentos & Rotinas</title>
 <script src="./supabase-config.js"></script>
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -50,6 +50,7 @@
       <button type="button" class="nav-item" data-modulo="rotinas"><span class="nav-ico" aria-hidden="true">⏰</span>Rotinas</button>
       <p class="sidebar-group">Cadastros</p>
       <button type="button" class="nav-item" data-modulo="medicamentos"><span class="nav-ico" aria-hidden="true">💊</span>Medicamentos</button>
+      <button type="button" class="nav-item" data-modulo="receitas"><span class="nav-ico" aria-hidden="true">🧾</span>Receitas</button>
       <button type="button" class="nav-item" data-modulo="historico"><span class="nav-ico" aria-hidden="true">📋</span>Histórico</button>
       <p class="sidebar-group">Sistema</p>
       <button type="button" class="nav-item" data-modulo="config"><span class="nav-ico" aria-hidden="true">⚙️</span>Nuvem e configurações</button>
@@ -200,6 +201,28 @@
   </div>
 
   <!-- MODULO: CONFIGURAÇÕES & NUVEM -->
+  <div id="view-receitas" class="hidden space-y-6">
+    <section class="glass-card rounded-2xl p-5 shadow-sm border-t-4 border-t-violet-500 space-y-4">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 class="text-lg font-bold text-slate-800">🧾 Receitas</h2><p class="text-sm text-slate-500">Cadastre cada receita com médico, medicamentos e duração. A IA pode preencher a partir da foto.</p></div>
+        <button id="btn-nova-receita" type="button" class="px-4 py-2.5 bg-violet-700 hover:bg-violet-800 text-white rounded-xl text-sm font-semibold">➕ Nova receita</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <label class="text-xs font-semibold text-slate-600">Buscar<input id="rec-busca" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal" placeholder="Medicamento, médico, clínica…"></label>
+        <label class="text-xs font-semibold text-slate-600">Paciente<select id="rec-paciente" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal"><option value="">Todos</option></select></label>
+        <label class="text-xs font-semibold text-slate-600">Data inicial<input id="rec-de" type="date" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal"></label>
+        <label class="text-xs font-semibold text-slate-600">Data final<input id="rec-ate" type="date" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-normal"></label>
+      </div>
+      <div class="flex items-center gap-3"><button id="btn-rec-limpar" type="button" class="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold">Limpar filtros</button><p id="rec-resultados" class="text-xs text-slate-500"></p></div>
+      <div id="receitas-lista" class="space-y-3"></div>
+    </section>
+    <section class="glass-card rounded-2xl p-5 shadow-sm border-t-4 border-t-teal-500 space-y-3">
+      <h2 class="text-lg font-bold text-slate-800">💊 Histórico de medicamentos receitados</h2>
+      <p class="text-sm text-slate-500">Todos os medicamentos das receitas acima (respeita os filtros), do mais recente ao mais antigo.</p>
+      <div class="overflow-x-auto"><table class="w-full text-sm text-left"><thead class="text-xs uppercase text-slate-500"><tr><th class="pr-3 pb-2">Data</th><th class="pr-3 pb-2">Medicamento</th><th class="pr-3 pb-2">Posologia</th><th class="pr-3 pb-2">Dias</th><th class="pr-3 pb-2">Paciente</th><th class="pb-2">Médico</th></tr></thead><tbody id="rec-historico-body"></tbody></table></div>
+    </section>
+  </div>
+
   <div id="view-config" class="hidden space-y-6 max-w-3xl mx-auto">
     <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
       <h2 class="text-lg font-bold text-slate-800 mb-1">☁️ Sincronização automática na nuvem</h2>
@@ -360,6 +383,29 @@
 </dialog>
 
 
+<dialog id="modal-receita" class="rounded-2xl p-0 w-full max-w-2xl shadow-2xl backdrop:bg-slate-900/50">
+  <div class="bg-violet-700 text-white px-6 py-4 flex justify-between items-center"><h3 id="modal-receita-title" class="font-bold text-lg">Nova receita</h3><button id="modal-receita-close" type="button" class="text-white font-bold text-xl" aria-label="Fechar">×</button></div>
+  <form id="form-receita" class="p-5 md:p-6 space-y-4 max-h-[82vh] overflow-y-auto">
+    <input type="hidden" id="rec-id">
+    <div class="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2">
+      <label class="block text-sm font-semibold text-violet-900">Ler receita com IA (imagem ou foto)<input id="rec-arquivo" type="file" accept="image/*" class="mt-2 block w-full text-sm text-slate-700"></label>
+      <div class="flex flex-wrap gap-2"><button id="btn-rec-ler-ia" type="button" class="px-4 py-2 bg-violet-700 hover:bg-violet-800 text-white rounded-lg text-sm font-semibold disabled:opacity-60">✨ Ler receita por IA e preencher</button><button id="btn-cancelar-receita-ia" type="button" class="hidden px-4 py-2 border border-violet-300 text-violet-800 rounded-lg text-sm font-semibold">Cancelar</button><button id="btn-rec-cancelar-ia" type="button" class="hidden px-4 py-2 border border-violet-300 text-violet-800 rounded-lg text-sm font-semibold">Cancelar</button></div>
+      <p id="rec-ia-status" class="text-xs text-slate-600" aria-live="polite"></p>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label class="text-sm font-semibold text-slate-700">Data da receita<input id="rec-data" type="date" required class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal"></label>
+      <label class="text-sm font-semibold text-slate-700">Paciente<input id="rec-paciente-nome" list="rec-pacientes-lista" required class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Nome de quem vai tomar"><datalist id="rec-pacientes-lista"></datalist></label>
+      <label class="text-sm font-semibold text-slate-700">Médico(a)<input id="rec-medico" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Nome do médico"></label>
+      <label class="text-sm font-semibold text-slate-700">CRM<input id="rec-crm" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Ex.: CRM-GO 12345"></label>
+      <label class="text-sm font-semibold text-slate-700">Hospital / clínica<input id="rec-hospital" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal" placeholder="Local do atendimento"></label>
+      <label class="text-sm font-semibold text-slate-700">Tipo de receituário<select id="rec-tipo" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal"><option>Simples</option><option>Controle especial</option><option>Antimicrobiano</option><option>Outro</option></select></label>
+    </div>
+    <div class="space-y-2"><div class="flex justify-between items-center"><h4 class="text-sm font-bold text-slate-800">Medicamentos da receita</h4><button id="btn-rec-add-item" type="button" class="px-3 py-1.5 border border-violet-300 text-violet-800 rounded-lg text-xs font-semibold">➕ Adicionar medicamento</button></div><div id="rec-itens" class="space-y-3"></div></div>
+    <label class="block text-sm font-semibold text-slate-700">Observações<textarea id="rec-observacoes" rows="2" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg font-normal"></textarea></label>
+    <div class="flex justify-end gap-2 pt-2"><button id="modal-receita-cancel" type="button" class="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold">Cancelar</button><button type="submit" class="px-5 py-2 bg-violet-700 hover:bg-violet-800 text-white rounded-lg text-sm font-semibold">Salvar receita</button></div>
+  </form>
+</dialog>
+
 <dialog id="modal-historico" class="rounded-2xl p-0 w-full max-w-2xl shadow-2xl backdrop:bg-slate-900/50">
   <div class="bg-violet-700 text-white px-6 py-4 flex justify-between items-center"><h3 id="modal-historico-title" class="font-bold text-lg">Novo histórico de medicamento</h3><button id="modal-historico-close" type="button" class="text-white font-bold text-xl">×</button></div>
   <form id="form-historico" class="p-5 md:p-6 space-y-4 max-h-[82vh] overflow-y-auto">
@@ -396,7 +442,8 @@
 <script src="./js/09-inicio.js"></script>
 <script src="./js/10-historico.js"></script>
 <script src="./js/11-receita-ia.js"></script>
-<script src="./js/12-navegacao.js"></script>
+<script src="./js/12-receitas.js"></script>
+<script src="./js/13-navegacao.js"></script>
 <script src="./js/pwa.js"></script>
 <script src="./js/99-main.js"></script>
 </body>
