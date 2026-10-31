@@ -1,6 +1,7 @@
-const CACHE_NAME = 'medicontrol-pwa-v6';
-const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './supabase-config.js', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
-self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())); });
+const CACHE_NAME = 'medicontrol-pwa-v3.0.0';
+const APP_SHELL = ["./", "./index.html", "./manifest.webmanifest", "./css/app.css", "./js/00-config.js", "./js/01-base.js", "./js/02-nuvem.js", "./js/03-auth.js", "./js/04-dados.js", "./js/05-medicamentos.js", "./js/06-doses.js", "./js/07-rotinas.js", "./js/08-notificacoes.js", "./js/09-inicio.js", "./js/10-historico.js", "./js/11-receita-ia.js", "./js/12-navegacao.js", "./js/99-main.js", "./js/pwa.js", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png"];
+// supabase-config.js é do usuário: cache opcional (se faltar, a instalação não falha).
+self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL).then(() => cache.add('./supabase-config.js').catch(() => {}))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', event => { const request=event.request; if(request.method!=='GET')return; const url=new URL(request.url); if(url.origin!==self.location.origin)return; event.respondWith(fetch(request).then(response=>{if(response&&response.ok){const copy=response.clone();caches.open(CACHE_NAME).then(cache=>cache.put(request,copy));}return response;}).catch(()=>caches.match(request).then(cached=>cached||caches.match('./index.html')))); });
 
